@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Panel Mayorista — Skyplay</title>
+  <style>
+    :root{
+      --bg:#0f1428;
+      --card:#121a33;
+      --text:#e5e7eb;
+      --muted:#94a3b8;
+      --primary:#2563eb;
+      --primary-700:#1d4ed8;
+      --accent:#22c55e;
+      --danger:#ef4444;
+      --warning:#f59e0b;
+      --success:#16a34a;
+      --ring:#3b82f6;
+      --radius:18px;
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{
+      margin:0; background:radial-gradient(1200px 800px at 20% -10%, #1a2448 0%, transparent 60%),
+                 radial-gradient(1200px 800px at 120% 110%, #101633 0%, transparent 60%), var(--bg);
+      color:var(--text); font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
+    }
+    /* Guard visual */
+    html.auth-hide { visibility: hidden; }
+    #auth-veil{position:fixed;inset:0;background:#0b1224;display:flex;align-items:center;justify-content:center;color:#e5e7eb;font-family:ui-sans-serif,system-ui;z-index:999999}
+
+    .container{max-width:1100px;margin:0 auto;padding:24px}
+    header{display:flex;align-items:center;justify-content:space-between;margin-bottom:18px}
+    .brand{display:flex;align-items:center;gap:12px}
+    .logoBox{width:44px;height:44px;border-radius:12px;background:#0b1224;border:1px solid rgba(255,255,255,.1);display:grid;place-items:center;overflow:hidden}
+    .logoBox img{max-width:100%;max-height:100%}
+    h1{font-size:1.4rem;margin:0}
+    .tag{display:inline-flex;align-items:center;gap:6px;padding:6px 10px;border-radius:999px;font-size:.85rem;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.04)}
+    .tag.green{border-color:rgba(34,197,94,.35);background:rgba(34,197,94,.12);color:#bbf7d0}
+    .tag.red{border-color:rgba(239,68,68,.35);background:rgba(239,68,68,.12);color:#fecaca}
+    .tag.yellow{border-color:rgba(245,158,11,.35);background:rgba(245,158,11,.12);color:#fde68a}
+    .actions{display:flex;gap:10px;flex-wrap:wrap}
+    .btn{display:inline-flex;align-items:center;gap:8px;padding:10px 14px;border-radius:12px;border:1px solid rgba(255,255,255,.12);cursor:pointer;background:var(--primary);color:#fff;font-weight:600}
+    .btn.secondary{background:transparent;color:var(--text)}
+    .btn:disabled{opacity:.6;cursor:not-allowed}
+    .grid{display:grid;gap:16px;grid-template-columns:1.1fr .9fr}
+    @media (max-width: 1024px){ .grid{grid-template-columns:1fr} }
+    .card{background:linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.02));backdrop-filter: blur(6px);
+      border:1px solid rgba(255,255,255,.08);border-radius: var(--radius);box-shadow: 0 20px 60px rgba(0,0,0,.35);padding:18px}
+    .card h2{margin:0 0 8px;font-size:1.1rem}
+    .muted{color:var(--muted);font-size:.93rem;margin:6px 0 0}
+    table{width:100%;border-collapse:separate;border-spacing:0 10px}
+    thead th{color:#cbd5e1;font-weight:600;text-align:left;padding:8px}
+    tbody td{padding:12px;background:#0b1224;border-top:1px solid rgba(255,255,255,.08);border-bottom:1px solid rgba(255,255,255,.08)}
+    tbody tr td:first-child{border-left:1px solid rgba(255,255,255,.08);border-top-left-radius:12px;border-bottom-left-radius:12px}
+    tbody tr td:last-child{border-right:1px solid rgba(255,255,255,.08);border-top-right-radius:12px;border-bottom-right-radius:12px}
+    .status{padding:4px 8px;border-radius:999px;font-size:.8rem}
+    .status.active{background:rgba(34,197,94,.12);color:#86efac;border:1px solid rgba(34,197,94,.35)}
+    .status.expired{background:rgba(239,68,68,.12);color:#fecaca;border:1px solid rgba(239,68,68,.35)}
+    .status.soon{background:rgba(245,158,11,.12);color:#fde68a;border:1px solid rgba(245,158,11,.35)}
+    .toast{display:none; position:fixed; bottom:16px; left:50%; transform:translateX(-50%); padding:12px 16px;
+      border-radius:12px; background:#111827; color:#e5e7eb; border:1px solid rgba(255,255,255,.1)}
+    .toast.ok{background:#052e16; border-color:#14532d; color:#d1fae5}
+    .toast.err{background:#3f1d1d; border-color:#7f1d1d; color:#fee2e2}
+    .banner{padding:10px 14px;border-radius:12px;border:1px solid rgba(245,158,11,.35);background:rgba(245,158,11,.12);color:#fde68a;margin:10px 0}
+    .banner.danger{border-color:rgba(239,68,68,.35);background:rgba(239,68,68,.12);color:#fecaca}
+    .right{display:flex; gap:8px; align-items:center; flex-wrap:wrap}
+    .mono{font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size:.85rem}
+  </style>
+
+  <!-- Anti-parpadeo: ocultar hasta validar sesión -->
+  <script>
+    //document.documentElement.classList.add('auth-hide');
+  </script>
+</head>
+<body>
+  <div id="auth-veil">Verificando acceso…</div>
+
+  <div class="container">
+    <header>
+      <div class="brand">
+        <div class="logoBox"><img id="brandLogo" alt="Logo" /></div>
+        <div>
+          <h1>Panel Mayorista</h1>
+          <div class="right">
+            <span id="subBadge" class="tag">Suscripción: —</span>
+            <span id="statusBadge" class="tag">Estado: —</span>
+          </div>
+        </div>
+      </div>
+      <div class="actions">
+        <a class="btn secondary" href="./index.html">Ir a la Tienda</a>
+        <button id="btnLogout" class="btn secondary">Cerrar sesión</button>
+      </div>
+    </header>
+
+    <section id="banners"></section>
+
+    <div class="grid">
+      <section class="card">
+        <h2>Mis servicios</h2>
+        <p class="muted">Renueva tus cuentas antes del vencimiento para evitar interrupciones.</p>
+        <div style="overflow:auto">
+          <table id="tblServices">
+            <thead>
+              <tr>
+                <th>Cuenta</th>
+                <th>Producto</th>
+                <th>Estado</th>
+                <th>Vence</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Mis órdenes recientes</h2>
+        <p class="muted">Historial de compras y renovaciones.</p>
+        <div style="overflow:auto">
+          <table id="tblOrders">
+            <thead>
+              <tr>
+                <th>Orden</th>
+                <th>Fecha</th>
+                <th>Total</th>
+                <th>Estado</th>
+                <th>Origen</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <div id="toast" class="toast"></div>
+
+  <script>
+    // Utilidades
+    const $ = (sel)=>document.querySelector(sel);
+    const fmtDate = (s)=>{
+      try{ const d = new Date(s); return d.toLocaleString(); }catch(_){ return s; }
+    };
+    const toast = (msg, ok=false)=>{
+      const t = $('#toast'); t.textContent=msg; t.className='toast '+(ok?'ok':'err');
+      t.style.display='block'; setTimeout(()=>t.style.display='none',2600);
+    };
+
+    // Guardia de sesión (muestra contenido solo si hay cookie válida)
+    (async () => {
+      try {
+        const me = await fetch('/api/auth/me', { credentials:'include' });
+        if (!me.ok) throw new Error('no-auth');
+        const meJson = await me.json();
+
+        // Carga overview (branding, suscripción, estado)
+        await loadOverview();
+
+        // Mostrar contenido
+        document.documentElement.classList.remove('auth-hide');
+        document.getElementById('auth-veil').remove();
+      } catch {
+       window.location.replace('./login.html'); 
+      }
+    })();
+
+    async function loadOverview(){
+      try {
+        const r = await fetch('/api/me/overview', { credentials:'include' });
+        if (!r.ok) throw new Error();
+        const data = await r.json();
+        // branding
+        if (data.branding && data.branding.logo_url) {
+          const img = $('#brandLogo'); img.src = data.branding.logo_url;
+        }
+
+        // banners de estado/suscripción
+        renderBadgesAndBanners(data);
+
+        // tablas
+        renderServices(data.active_services || []);
+        renderOrders(data.last_orders || []);
+      } catch(e){
+        toast('No se pudo cargar el panel');
+      }
+    }
+
+    function renderBadgesAndBanners(data){
+      const sub = data.subscription || {};
+      const wholesaler = data.wholesaler || {};
+      const subBadge = $('#subBadge');
+      const statusBadge = $('#statusBadge');
+      const banners = $('#banners');
+      banners.innerHTML = '';
+
+      // Suscripción
+      var subTxt = '—';
+      var subClass = 'tag';
+      if (sub.status === 'active') {
+        subTxt = 'Activa (mejor precio)';
+        subClass = 'tag green';
+      } else if (sub.status === 'past_due') {
+        subTxt = 'Vencida / pendiente';
+        subClass = 'tag yellow';
+        var b1 = document.createElement('div');
+        b1.className='banner';
+        b1.innerHTML = 'Tu suscripción está <b>pendiente o vencida</b>. Renueva para mantener el precio preferencial.';
+        banners.appendChild(b1);
+      } else if (sub.status === 'canceled') {
+        subTxt = 'Cancelada';
+        subClass = 'tag red';
+        var b2 = document.createElement('div');
+        b2.className='banner danger';
+        b2.innerHTML = 'Tu suscripción está <b>cancelada</b>. Puedes reactivarla desde tu método de pago o contáctanos.';
+        banners.appendChild(b2);
+      } else {
+        subTxt = 'Sin suscripción';
+        var b3 = document.createElement('div');
+        b3.className='banner';
+        b3.innerHTML = 'No tienes una suscripción activa. Actívala para acceder a precios preferenciales.';
+        banners.appendChild(b3);
+      }
+      subBadge.className = subClass;
+      subBadge.textContent = 'Suscripción: ' + subTxt;
+
+      // Estado de mayorista (kill switch)
+      var stTxt = '—';
+      var stClass = 'tag';
+      if (wholesaler.status === 'active' || wholesaler.status === true) {
+        stTxt = 'Activo';
+        stClass = 'tag green';
+      } else if (wholesaler.status === 'suspended' || wholesaler.status === false) {
+        stTxt = 'Suspendido';
+        stClass = 'tag red';
+        var b4 = document.createElement('div');
+        b4.className='banner danger';
+        b4.innerHTML = 'Tu cuenta mayorista está <b>suspendida</b>. Las compras están deshabilitadas.';
+        banners.appendChild(b4);
+      } else {
+        stTxt = 'Pendiente';
+        stClass = 'tag yellow';
+      }
+      statusBadge.className = stClass;
+      statusBadge.textContent = 'Estado: ' + stTxt;
+
+      // Fecha de expiración (si viene)
+      if (sub.current_period_end) {
+        var b5 = document.createElement('div');
+        b5.className='muted';
+        b5.innerHTML = 'Suscripción vence: <span class="mono">' + fmtDate(sub.current_period_end) + '</span>';
+        banners.appendChild(b5);
+      }
+    }
+
+    function renderServices(rows){
+      const tb = $('#tblServices tbody');
+      tb.innerHTML = '';
+      if (!rows || rows.length === 0) {
+        const tr = document.createElement('tr');
+        const td = document.createElement('td'); td.colSpan=5; td.className='muted'; td.textContent='No hay servicios activos aún.';
+        tr.appendChild(td); tb.appendChild(tr);
+        return;
+      }
+      rows.forEach(s => {
+        const tr = document.createElement('tr');
+        const status = (s.status || '').toLowerCase();
+        const expires = s.expires_at ? new Date(s.expires_at) : null;
+        const soon = expires ? ((expires - Date.now())/(1000*3600*24) <= 3) : false;
+        var statusClass = 'status';
+        if (status === 'active') statusClass += ' active';
+        else if (status === 'expired') statusClass += ' expired';
+        else if (soon) statusClass += ' soon';
+
+        tr.innerHTML = ''
+          + '<td class="mono">' + escapeHtml(s.external_ref || s.id || '—') + '</td>'
+          + '<td>' + escapeHtml(s.product_name || s.product_code || '—') + '</td>'
+          + '<td><span class="' + statusClass + '">' + (status || (soon?'soon':'—')) + '</span></td>'
+          + '<td>' + (s.expires_at ? fmtDate(s.expires_at) : '—') + '</td>'
+          + '<td style="text-align:right">'
+          +   '<button class="btn" data-sid="' + escapeAttr(s.id) + '">Renovar</button>'
+          + '</td>';
+
+        tb.appendChild(tr);
+      });
+
+      // Attach renew handlers
+      tb.querySelectorAll('button[data-sid]').forEach(btn => {
+        btn.addEventListener('click', async ()=>{
+          const id = btn.getAttribute('data-sid');
+          btn.disabled = true; btn.textContent='Procesando…';
+          try{
+            const r = await fetch('/api/services/'+encodeURIComponent(id)+'/renew', {
+              method:'POST', credentials:'include', headers:{'Content-Type':'application/json'}
+            });
+            if (!r.ok) throw new Error();
+            const j = await r.json();
+            if (j.checkout_url) {
+              window.location.href = j.checkout_url;
+            } else {
+              toast('Renovación registrada', true);
+              // refrescar overview
+              await loadOverview();
+            }
+          }catch(_){
+            toast('No se pudo iniciar la renovación');
+          }finally{
+            btn.disabled = false; btn.textContent='Renovar';
+          }
+        });
+      });
+    }
+
+    function renderOrders(rows){
+      const tb = $('#tblOrders tbody');
+      tb.innerHTML = '';
+      if (!rows || rows.length === 0) {
+        const tr = document.createElement('tr');
+        const td = document.createElement('td'); td.colSpan=5; td.className='muted'; td.textContent='No hay órdenes recientes.';
+        tr.appendChild(td); tb.appendChild(tr);
+        return;
+      }
+      rows.forEach(o => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = ''
+          + '<td class="mono">' + escapeHtml(o.id || '—') + '</td>'
+          + '<td>' + (o.created_at ? fmtDate(o.created_at) : '—') + '</td>'
+          + '<td>' + (o.currency || 'USD') + ' ' + Number(o.total_amount || 0).toFixed(2) + '</td>'
+          + '<td>' + escapeHtml((o.status || '').toUpperCase()) + '</td>'
+          + '<td>' + escapeHtml(o.source || '—') + '</td>';
+        tb.appendChild(tr);
+      });
+    }
+
+    // Logout
+    (function(){
+      const btn = document.getElementById('btnLogout');
+      btn.addEventListener('click', async function(){
+        try{ await fetch('/api/auth/logout', { method:'POST', credentials:'include' }); }catch(e){}
+        window.location.replace('./login.html');
+      });
+    })();
+
+    // Helpers de escape
+    function escapeHtml(s){
+      if (s==null) return '';
+      return String(s).replace(/[&<>'"]/g, function(c){ return ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'})[c]; });
+    }
+    function escapeAttr(s){ return escapeHtml(s).replace(/"/g,'&quot;'); }
+  </script>
+</body>
+</html>

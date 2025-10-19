@@ -1,0 +1,581 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <style>
+    /* Evita ver el catálogo si no hay sesión; quitamos esta clase cuando el backend confirma */
+    html.auth-hide { visibility: hidden; }
+    /* Opcional: velo, por si prefieres mostrar un overlay en lugar de ocultar todo */
+    #auth-veil{position:fixed;inset:0;background:#0b1224;display:flex;align-items:center;justify-content:center;color:#e5e7eb;font-family:ui-sans-serif,system-ui;z-index:999999}
+  </style>
+
+  <script>
+    // Agrega la clase lo antes posible para evitar "parpadeo" del catálogo sin sesión
+    document.documentElement.classList.add('auth-hide');
+  </script>  
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Skyplay · Planes Mayoristas</title>
+  <meta name="description" content="Listado profesional de planes para mayoristas: streaming + IPTV. Búsqueda, fichas, precios, billetera y pagos." />
+  <meta name="theme-color" content="#2563eb" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root{ --bg:#0f1428; --card:#131b36; --muted:#a8b6dd; --edge:#1f2a4a; --brand:#2563eb; --accent:#7c3aed; --ok:#22c55e; --warn:#f59e0b; --radius:18px; --shadow: 0 10px 30px rgba(2,8,23,.35);} 
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{margin:0; font-family:Inter,system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif; color:#e6eefc; background: radial-gradient(1200px 600px at 10% -20%, rgba(124,58,237,.18), transparent 60%), radial-gradient(1000px 600px at 110% -10%, rgba(37,99,235,.22), transparent 60%), var(--bg);} 
+    .container{width:min(1120px,94vw); margin-inline:auto}
+    header.hero{padding:40px 0 10px; text-align:center}
+    .kicker{display:inline-flex; gap:.5rem; align-items:center; font-weight:700; color:#cfe6ff; background:#0f1b38; border:1px solid rgba(255,255,255,.08); padding:.35rem .7rem; border-radius:999px}
+    h1{font-size: clamp(1.8rem, .7rem + 3.5vw, 3rem); margin:14px 0 6px; letter-spacing:.2px}
+    .sub{color:#bfd4ff}
+    .actions{display:flex; justify-content:center; gap:10px; margin:18px 0 0}
+    .btn{display:inline-flex; align-items:center; gap:.5rem; padding:12px 16px; border-radius:12px; border:1px solid rgba(255,255,255,.14); background:transparent; color:#d7e6ff; cursor:pointer}
+    .btn.primary{background:linear-gradient(135deg,var(--brand),var(--accent)); color:#061024; border:none; box-shadow:var(--shadow); font-weight:800}
+    .btn.ghost{background:#0f1b38}
+
+    .topbar{display:grid; grid-template-columns: auto 1fr; gap:14px; align-items:center; margin:14px auto 0; width:min(920px,96vw)}
+    .logoBox{display:flex; align-items:center; gap:10px; background:#0f1b38; border:1px solid rgba(255,255,255,.12); padding:8px 10px; border-radius:12px}
+    .logoBox img{width:44px;height:44px;border-radius:10px;object-fit:contain;background:#0b1430}
+    .logoBox .input{width:220px}
+
+    .toolbar{margin:16px 0; display:flex; gap:10px; align-items:center; flex-wrap:wrap}
+    .search{flex:1 1 320px; background:#0f1b38; border:1px solid rgba(255,255,255,.12); border-radius:12px; padding:10px 12px; color:#e9f1ff}
+    .tag{padding:.28rem .5rem; border:1px solid rgba(255,255,255,.12); border-radius:999px; background:#11183a; color:#b9cdf8; font-size:.85rem}
+
+    .list{display:flex; flex-direction:column; gap:12px}
+    .row{background:linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.02)); border:1px solid rgba(255,255,255,.08); border-radius:var(--radius); padding:14px; display:grid; grid-template-columns: 44px 1fr auto; gap:12px; align-items:center}
+    .badge{width:44px;height:44px; border-radius:12px; display:grid; place-items:center; font-weight:800; color:white}
+    .name{font-weight:800; font-size:1.1rem}
+    .meta{color:var(--muted); font-size:.9rem}
+    .chev{opacity:.7}
+
+    .details{display:none; padding:12px; border-top:1px dashed rgba(255,255,255,.08); grid-column:1/-1}
+    .plans{display:grid; grid-template-columns:repeat(4,1fr); gap:10px}
+    .plan{background:#0f1736; border:1px solid rgba(255,255,255,.08); border-radius:14px; padding:12px}
+    .plan h4{margin:0 0 4px; font-size:1rem}
+    .plan p{margin:0; color:#c9d6ff; font-size:.9rem}
+    .price{margin-top:6px; font-weight:800; font-size:1.05rem; color:#d8f5c8; display:none}
+    .cta{display:flex; gap:8px; margin-top:10px}
+    .cta .btn{padding:8px 10px}
+
+    .summary{margin:16px 0 34px; display:grid; grid-template-columns:repeat(3,1fr); gap:10px}
+    .tile{background:linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.02)); border:1px solid rgba(255,255,255,.08); border-radius:14px; padding:16px; text-align:center}
+    .tile strong{display:block; font-size:1.6rem}
+
+    footer{padding:34px 0; color:#9fb4e4; font-size:.9rem}
+
+    /* modal */
+    .modal{position:fixed; inset:0; display:flex; align-items:center; justify-content:center; background:rgba(0,0,0,.6); backdrop-filter:blur(4px); visibility:hidden; opacity:0; transition:.25s}
+    .modal.open{visibility:visible; opacity:1}
+    .modal-content{background:var(--card); padding:20px; border-radius:14px; max-width:640px; width:92%; border:1px solid rgba(255,255,255,.12)}
+    .modal-head{display:flex; justify-content:space-between; align-items:center; gap:10px}
+    .tabs{display:flex; gap:8px; margin:12px 0}
+    .tab{padding:8px 10px; border-radius:999px; border:1px solid rgba(255,255,255,.12); background:#0f1b38; cursor:pointer}
+    .tab.active{background:linear-gradient(135deg,var(--brand),var(--accent)); color:#061024; border:none}
+    .paygrid{display:grid; grid-template-columns:1fr 1fr; gap:10px}
+    .payopt{padding:12px; background:#0f1b38; border-radius:12px; border:1px solid rgba(255,255,255,.12); cursor:pointer}
+    .payopt:hover{border-color:var(--brand)}
+    .wallet{background:#0f1b38; border:1px solid rgba(255,255,255,.12); border-radius:12px; padding:12px}
+    .wallet strong{font-size:1.4rem}
+    .rowflex{display:flex; gap:8px; align-items:center; margin-top:10px}
+    .input{flex:1; padding:10px 12px; border-radius:10px; background:#0b1430; border:1px solid rgba(255,255,255,.12); color:#e6eefc}
+
+    @media (max-width: 980px){ .plans{grid-template-columns:repeat(2,1fr)} .summary{grid-template-columns:1fr 1fr 1fr} }
+    @media (max-width: 640px){ .plans{grid-template-columns:1fr} .row{grid-template-columns:44px 1fr} .summary{grid-template-columns:1fr} .paygrid{grid-template-columns:1fr} .topbar{grid-template-columns:1fr} .logoBox{flex-wrap:wrap} }
+  </style>
+  <!-- PWA: meta básicos -->
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="Skyplay Mayoristas" />
+  <link rel="apple-touch-icon" href="https://dummyimage.com/192x192/2563eb/ffffff&text=S" />
+  <link id="manifestLink" rel="manifest" href="#" />
+</head>
+<body>
+<script>
+(async () => {
+  // Velo opcional
+  var veil = document.createElement('div');
+  veil.id = 'auth-veil';
+  veil.textContent = 'Verificando acceso…';
+  document.body.appendChild(veil);
+
+  try {
+    // Debe responder 200 si la cookie HttpOnly de sesión es válida
+    const r = await fetch('/api/auth/me', { credentials: 'include' });
+    if (!r.ok) throw new Error('no-auth');
+
+    // OK: mostrar catálogo
+    document.documentElement.classList.remove('auth-hide');
+    veil.remove();
+  } catch {
+    // Sin sesión: ir al login
+    window.location.replace('./login.html');
+  }
+})();
+</script>
+
+  <header class="hero container">
+    <span class="kicker">📦 Mayoristas · Catálogo Estructurado</span>
+    <h1>Planes de <span style="background:linear-gradient(90deg,var(--brand),var(--accent));-webkit-background-clip:text;background-clip:text;color:transparent">Streaming & IPTV</span></h1>
+    <p class="sub">Lista de servicios y planes disponibles para distribución mayorista. Incluye buscador, fichas, precios y pagos.</p>
+
+    <!-- Box para logo de la empresa -->
+    <div class="topbar">
+      <div class="logoBox">
+        <img id="logoImg" alt="Logo" src="https://dummyimage.com/160x160/0b1430/ffffff&text=LOGO"/>
+        <input id="logoUrl" class="input" type="url" placeholder="Pega URL del logo (PNG/SVG)"/>
+        <input id="logoFile" class="input" type="file" accept="image/*"/>
+        <button class="btn" id="btnSetLogo">Cargar logo</button>
+      </div>
+
+      <div class="actions" style="justify-content:flex-end">
+  <button class="btn" onclick="window.location.href='./panel_mayorista.html'">
+    ← Volver al Panel
+  </button>
+
+    <button class="btn secondary" onclick="logout()">Cerrar sesión</button>
+      </div>
+    </div>
+
+    <div class="toolbar container">
+      <input id="q" class="search" placeholder="Buscar servicio o plan (ej. Netflix Premium, Perfil 30, 3 dispositivos)…" />
+      <span class="tag" id="countServices">0 servicios</span>
+      <span class="tag" id="countPlans">0 planes</span>
+    </div>
+  </header>
+
+  <main class="container">
+    <section class="list" id="list"></section>
+
+    <section class="summary">
+      <div class="tile"><strong id="tServices">0</strong>Servicios</div>
+      <div class="tile"><strong id="tPlans">0</strong>Planes totales</div>
+      <div class="tile"><strong id="tReady">✔</strong>Estructura lista</div>
+    </section>
+  </main>
+
+  <footer class="container">
+    <div class="tile" style="text-align:center">
+      <p>© <span id="year"></span> Skyplay · Catálogo Mayorista. Soporte por WhatsApp y panel B2B bajo solicitud.</p>
+    </div>
+  </footer>
+
+  <!-- Créditos Prepago (opción visible para todos) -->
+  <section class="container" style="margin-bottom:24px">
+    <h2 style="text-align:center;margin:0 0 12px">Recarga de Créditos (Billetera)</h2>
+    <p class="sub" style="text-align:center;margin:0 0 12px">Compra paquetes y recibe bono automático: 10%, 20%, 30% y 40%.</p>
+    <div class="plans" id="creditCards" style="margin-top:8px"></div>
+  </section>
+
+  <!-- Modal de Pago / Billetera -->
+  <div class="modal" id="modal">
+    <div class="modal-content">
+      <div class="modal-head">
+        <div>
+          <strong id="modalTitle">Comprar</strong>
+          <div class="muted" id="modalSub" style="color:#bcd0fb;font-size:.9rem"></div>
+        </div>
+        <button class="btn" onclick="closeModal()">✕</button>
+      </div>
+
+      <div class="tabs">
+        <button class="tab active" data-tab="pay">Pagar ahora</button>
+        <button class="tab" data-tab="wallet">Billetera</button>
+      </div>
+
+      <div id="tab-pay">
+        <div class="paygrid">
+          <div class="payopt" data-method="SINPE">Sinpe Móvil</div>
+          <div class="payopt" data-method="CARD">Tarjetas</div>
+          <div class="payopt" data-method="BINANCE">Binance Pay</div>
+          <div class="payopt" data-method="PAYPAL">PayPal</div>
+          <div class="payopt" id="payoptWallet" data-method="WALLET">Billetera (saldo: <span id="optWalletBalance">$0.00</span>)</div>
+        </div>
+        <div class="rowflex" style="justify-content:space-between;margin-top:12px">
+          <div>Precio: <strong id="modalPrice">—</strong></div>
+          <button class="btn primary" id="btnPayNow">Pagar</button>
+        </div>
+      </div>
+
+      <div id="tab-wallet" style="display:none">
+        <div class="wallet">
+          <div>Saldo disponible</div>
+          <strong><span id="walletBalance">$0.00</span></strong>
+
+          <div class="rowflex" style="margin-top:6px"><small class="muted">Elige un método para recargar tu billetera:</small></div>
+          <div class="paygrid" id="topupMethods" style="margin-top:6px">
+            <div class="payopt" data-topup="SINPE">Sinpe Móvil</div>
+            <div class="payopt" data-topup="CARD">Tarjetas</div>
+            <div class="payopt" data-topup="BINANCE">Binance Pay</div>
+            <div class="payopt" data-topup="PAYPAL">PayPal</div>
+          </div>
+
+          <div class="rowflex">
+            <input class="input" id="topupAmount" type="number" placeholder="Monto a recargar" min="1" step="0.5">
+            <button class="btn primary" id="btnTopup">Recargar</button>
+          </div>
+          <div class="rowflex" style="justify-content:space-between">
+            <small class="muted">Usa tu saldo para pagar al instante.</small>
+            <button class="btn" id="btnPayWallet">Pagar con saldo</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Colores por marca
+    const BRAND = { Disney:'#113CCF', VIX:'#FF5C00', Crunchyroll:'#F47521', MAX:'#7c3aed', Netflix:'#E50914', Paramount:'#0057B8', FlujoTV:'#00ADEF', MagisTV:'#22c55e', 'Tele Latino':'#14b8a6', 'Créditos':'#22c55e' };
+
+    // Catálogo base
+    const DATA = [
+      // Créditos como servicio visible junto a los demás
+      { svc:'Créditos', note:'Recarga con bono automático', plans:['10 Créditos (+10%)','25 Créditos (+20%)','50 Créditos (+30%)','100 Créditos (+40%)'] },
+      { svc:'Disney',  plans:['Básico','Estándar'] },
+      { svc:'VIX',     plans:['1 Mes','Anual','Perfil 30'] },
+      { svc:'Crunchyroll', plans:['1 Mes','Anual','Perfil 30'] },
+      { svc:'MAX',     plans:['Basic','Standard','Perfil 30'] },
+      { svc:'Netflix', plans:['Basic','Standard','Premium'] },
+      { svc:'Paramount', plans:['1 Mes','Perfil 30'] },
+      { svc:'FlujoTV',  note:'Hasta 3 dispositivos', plans:['1 Mes (3 Dispositivos)','3 Meses (3 Dispositivos)','6 + 1 Meses (3 Dispositivos)','12 + 2 Meses (3 Dispositivos)'] },
+      { svc:'MagisTV',  note:'3 dispositivos o 1 dispositivo', plans:['1 Mes (3 Dispositivos)','3 Meses (3 Dispositivos)','6 + 1 Meses (3 Dispositivos)','12 + 2 Meses (3 Dispositivos)','1 Mes (1 Dispositivo)','3 Meses (1 Dispositivo)','6 + 1 Meses (1 Dispositivo)','12 + 2 Meses (1 Dispositivo)'] },
+      { svc:'Tele Latino', note:'3 dispositivos o 1 dispositivo', plans:['1 Mes (3 Dispositivos)','3 Meses (3 Dispositivos)','6 + 1 Meses (3 Dispositivos)','12 + 2 Meses (3 Dispositivos)','1 Mes (1 Dispositivo)','3 Meses (1 Dispositivo)','6 + 1 Meses (1 Dispositivo)','12 + 2 Meses (1 Dispositivo)'] },
+    ];
+
+    // Tabla de precios (edita aquí). Key = `${svc}|${plan}`
+    const PRICE = {
+      // Créditos (1 crédito = $1, aplica bono al depositar en billetera)
+      'Créditos|10 Créditos (+10%)': 10,
+      'Créditos|25 Créditos (+20%)': 25,
+      'Créditos|50 Créditos (+30%)': 50,
+      'Créditos|100 Créditos (+40%)': 100,
+      'Disney|Básico': 3.5, 'Disney|Estándar': 5,
+      'VIX|1 Mes': 4, 'VIX|Anual': 35, 'VIX|Perfil 30': 2,
+      'Crunchyroll|1 Mes': 5, 'Crunchyroll|Anual': 48, 'Crunchyroll|Perfil 30': 2.5,
+      'MAX|Basic': 4, 'MAX|Standard': 6, 'MAX|Perfil 30': 2.5,
+      'Netflix|Basic': 5, 'Netflix|Standard': 7, 'Netflix|Premium': 9,
+      'Paramount|1 Mes': 4, 'Paramount|Perfil 30': 2,
+      'FlujoTV|1 Mes (3 Dispositivos)': 9.5, 'FlujoTV|3 Meses (3 Dispositivos)': 25, 'FlujoTV|6 + 1 Meses (3 Dispositivos)': 49, 'FlujoTV|12 + 2 Meses (3 Dispositivos)': 89,
+      'MagisTV|1 Mes (3 Dispositivos)': 8.5, 'MagisTV|3 Meses (3 Dispositivos)': 23, 'MagisTV|6 + 1 Meses (3 Dispositivos)': 44, 'MagisTV|12 + 2 Meses (3 Dispositivos)': 79,
+      'MagisTV|1 Mes (1 Dispositivo)': 6, 'MagisTV|3 Meses (1 Dispositivo)': 16, 'MagisTV|6 + 1 Meses (1 Dispositivo)': 30, 'MagisTV|12 + 2 Meses (1 Dispositivo)': 55,
+      'Tele Latino|1 Mes (3 Dispositivos)': 8, 'Tele Latino|3 Meses (3 Dispositivos)': 21, 'Tele Latino|6 + 1 Meses (3 Dispositivos)': 39, 'Tele Latino|12 + 2 Meses (3 Dispositivos)': 72,
+      'Tele Latino|1 Mes (1 Dispositivo)': 5.5, 'Tele Latino|3 Meses (1 Dispositivo)': 14, 'Tele Latino|6 + 1 Meses (1 Dispositivo)': 26, 'Tele Latino|12 + 2 Meses (1 Dispositivo)': 48
+    };
+
+    // Simulación de stock via placeholder (sustituye por API):
+    function getStock(svc, plan){ return Math.floor(Math.random()*50+1); }
+
+    // Billetera (localStorage)
+    const wallet = { key:'sky_wallet', get(){ return parseFloat(localStorage.getItem(this.key)||'0') }, set(v){ localStorage.setItem(this.key, String(v)) } };
+
+    const list = document.getElementById('list');
+    const modal = document.getElementById('modal');
+    let selected = { svc:null, plan:null, price:0, method:null, topupMethod:null };
+
+    function openModal(){ modal.classList.add('open'); updateWalletUI(); }
+    function closeModal(){ modal.classList.remove('open'); }
+
+    // Tabs
+    document.addEventListener('click', (e)=>{
+      if(e.target.classList.contains('tab')){
+        document.querySelectorAll('.tab').forEach(t=> t.classList.remove('active'));
+        e.target.classList.add('active');
+        const tab = e.target.dataset.tab;
+        document.getElementById('tab-pay').style.display = tab==='pay' ? 'block':'none';
+        document.getElementById('tab-wallet').style.display = tab==='wallet' ? 'block':'none';
+      }
+    });
+
+    // Pago inmediato (incluye opción Billetera)
+    document.addEventListener('click', (e)=>{
+      if(e.target.classList.contains('payopt')){
+        document.querySelectorAll('#tab-pay .payopt').forEach(p=> p.style.borderColor = 'rgba(255,255,255,.12)');
+        e.target.style.borderColor = 'var(--brand)';
+        selected.method = e.target.dataset.method;
+      }
+      if(e.target.classList.contains('payopt') && e.target.dataset.topup){
+        // nada: capturado en bloque de recarga abajo
+      }
+    });
+    document.getElementById('btnPayNow').addEventListener('click', ()=>{
+      if(!selected.method){ alert('Elige un método de pago'); return }
+      if(selected.method==='WALLET'){
+        const bal = wallet.get();
+        if(bal < selected.price){ alert('Saldo insuficiente en billetera'); return }
+        wallet.set(bal - selected.price); updateWalletUI(); alert(`Pago con saldo realizado: $${selected.price.toFixed(2)}`); closeModal();
+      } else {
+        alert(`Procesando pago ${selected.method} por $${selected.price.toFixed(2)} de ${selected.svc} · ${selected.plan}`);
+        closeModal();
+      }
+    });
+
+    // Billetera: elegir método de recarga y recargar
+    document.getElementById('topupMethods').addEventListener('click', (e)=>{
+      const opt = e.target.closest('.payopt'); if(!opt) return;
+      document.querySelectorAll('#topupMethods .payopt').forEach(p=> p.style.borderColor='rgba(255,255,255,.12)');
+      opt.style.borderColor='var(--brand)';
+      selected.topupMethod = opt.dataset.topup;
+    });
+    function updateWalletUI(){
+      const bal = wallet.get();
+      document.getElementById('walletBalance').textContent = `$${bal.toFixed(2)}`;
+      document.getElementById('optWalletBalance').textContent = `$${bal.toFixed(2)}`;
+    }
+    document.getElementById('btnTopup').addEventListener('click', ()=>{
+      const v = parseFloat(document.getElementById('topupAmount').value||'0');
+      if(!selected.topupMethod){ alert('Elige un método de recarga'); return }
+      if(v>0){
+        wallet.set(wallet.get()+v);
+        updateWalletUI();
+        alert(`Recarga $${v.toFixed(2)} por ${selected.topupMethod}`);
+        // webhook para registrar la recarga en tu backend
+        sendTopupWebhook({plan:`Topup libre`, amount:v, credits:v, method:selected.topupMethod});
+        document.getElementById('topupAmount').value='';
+      }
+    });
+    document.getElementById('btnPayWallet').addEventListener('click', ()=>{
+      const bal = wallet.get();
+      if(bal < selected.price){ alert('Saldo insuficiente en billetera'); return }
+      wallet.set(bal - selected.price); updateWalletUI(); alert(`Pago con saldo realizado: $${selected.price.toFixed(2)}`); closeModal();
+    });
+
+    // Logo uploader
+    document.getElementById('btnSetLogo').addEventListener('click', ()=>{
+      const url = document.getElementById('logoUrl').value.trim();
+      const file = document.getElementById('logoFile').files[0];
+      const img = document.getElementById('logoImg');
+      if(file){ const r = new FileReader(); r.onload = e=> img.src = e.target.result; r.readAsDataURL(file); }
+      else if(url){ img.src = url; }
+    });
+
+    function makeRow(item){
+      const row = document.createElement('div'); row.className='row';
+      row.innerHTML = `
+        <div class="badge" style="background:${BRAND[item.svc]||'#334155'}">${item.svc[0]}</div>
+        <div>
+          <div class="name">${item.svc}</div>
+          <div class="meta">${item.plans.length} planes disponibles${item.note? ' · '+item.note:''}</div>
+        </div>
+        <div class="chev">›</div>
+        <div class="details">
+          <div class="plans">
+            ${item.plans.map(p=>{
+              const key = `${item.svc}|${p}`;
+              const price = PRICE[key];
+              return `
+              <div class="plan">
+                <h4>${p}</h4>
+                <p>Entrega: inmediata · Stock disponible: <span class="stock" data-svc="${item.svc}" data-plan="${p}"></span></p>
+                <div class="price" data-price="${price||''}">${price? `$${price.toFixed(2)}`: ''}</div>
+                <div class="cta">
+                  <button class="btn ghost" data-action="price" data-svc="${item.svc}" data-plan="${p}">${price? 'Ocultar precio':'Ver precio'}</button>
+                  <button class="btn primary" data-action="buy" data-svc="${item.svc}" data-plan="${p}">Comprar</button>
+                  <button class="btn" data-action="copy" data-svc="${item.svc}" data-plan="${p}">Copiar ficha</button>
+                </div>
+              </div>`;
+            }).join('')}
+          </div>
+        </div>
+      `;
+
+      row.addEventListener('click', e=>{
+        if(e.target.closest('.btn')) return;
+        const det = row.querySelector('.details');
+        det.style.display = det.style.display==='block' ? 'none' : 'block';
+      });
+
+      row.querySelectorAll('.btn').forEach(btn=>{
+        btn.addEventListener('click', e=>{
+          const svc = e.currentTarget.dataset.svc;
+          const plan = e.currentTarget.dataset.plan;
+          const action = e.currentTarget.dataset.action;
+          if(action==='copy'){
+            const key = `${svc}|${plan}`;
+            const text = `${svc} · ${plan} — $${(PRICE[key]||0).toFixed(2)} — Mayorista Skyplay`;
+            navigator.clipboard.writeText(text);
+            e.currentTarget.textContent = '¡Copiado!';
+            setTimeout(()=> e.currentTarget.textContent='Copiar ficha', 1200);
+          } else if(action==='price'){
+            const wrap = e.currentTarget.closest('.plan');
+            const priceEl = wrap.querySelector('.price');
+            const has = priceEl.getAttribute('data-price');
+            if(has){ priceEl.style.display = priceEl.style.display==='block' ? 'none' : 'block'; e.currentTarget.textContent = priceEl.style.display==='block' ? 'Ocultar precio':'Ver precio'; }
+            else { alert('Precio no definido. Edita el objeto PRICE en el código.'); }
+          } else if(action==='buy'){
+            const key = `${svc}|${plan}`;
+            selected = { svc, plan, price: PRICE[key]||0, method:null, topupMethod:null };
+            document.getElementById('modalTitle').textContent = `Comprar ${svc}`;
+            document.getElementById('modalSub').textContent = plan;
+            document.getElementById('modalPrice').textContent = selected.price? `$${selected.price.toFixed(2)}` : '—';
+            document.querySelectorAll('.payopt').forEach(p=> p.style.borderColor='rgba(255,255,255,.12)');
+            openModal();
+          }
+        })
+      })
+      return row;
+    }
+
+    function render(data){
+      list.innerHTML='';
+      data.forEach(item=> list.appendChild(makeRow(item)) );
+      const totalServices = data.length;
+      const totalPlans = data.reduce((a,b)=> a + b.plans.length, 0);
+      document.getElementById('countServices').textContent = `${totalServices} servicios`;
+      document.getElementById('countPlans').textContent = `${totalPlans} planes`;
+      document.getElementById('tServices').textContent = totalServices;
+      document.getElementById('tPlans').textContent = totalPlans;
+      document.getElementById('year').textContent = new Date().getFullYear();
+      document.querySelectorAll('.stock').forEach(s=> s.textContent = getStock(s.dataset.svc, s.dataset.plan));
+      updateWalletUI();
+    }
+
+    render(DATA);
+
+    document.getElementById('q').addEventListener('input', e=>{
+      const q = e.target.value.toLowerCase().trim();
+      const filtered = DATA.filter(it=> it.svc.toLowerCase().includes(q) || it.plans.some(p=> p.toLowerCase().includes(q)) );
+      render(filtered);
+    });
+
+    document.getElementById('btnExport').addEventListener('click', ()=>{
+      const out = DATA.map(x=> `${x.svc}: ${x.plans.join(', ')}`).join('\n');
+      const blob = new Blob([out], {type:'text/plain'});
+      const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'catalogo_mayorista.txt'; a.click();
+    });
+
+    document.getElementById('btnQuote').addEventListener('click', ()=>{
+      const wa = `https://wa.me/15551234567?text=${encodeURIComponent('Hola, quiero una cotización mayorista del catálogo.')}`; window.open(wa, '_blank');
+    });
+  // --- Créditos Prepago: render tarjetas arriba y compra directa a billetera ---
+    const CREDIT_TIERS = [
+      {label:'10 Créditos', key:'Créditos|10 Créditos (+10%)', bonus:0.10},
+      {label:'25 Créditos', key:'Créditos|25 Créditos (+20%)', bonus:0.20},
+      {label:'50 Créditos', key:'Créditos|50 Créditos (+30%)', bonus:0.30},
+      {label:'100 Créditos', key:'Créditos|100 Créditos (+40%)', bonus:0.40},
+    ];
+    function renderCreditCards(){
+      const grid = document.getElementById('creditCards');
+      grid.innerHTML = CREDIT_TIERS.map(t=>{
+        const price = PRICE[t.key];
+        return `<div class="plan">
+          <h4>${t.label} <span style="color:#86efac;font-size:.9rem">(+${Math.round(t.bonus*100)}% de bono)</span></h4>
+          <p>Recibe ${(price*(1+t.bonus)).toFixed(2)} créditos por $${price.toFixed(2)}.</p>
+          <div class="cta">
+            <button class="btn primary" data-credit="${t.key}">Comprar ${price} USDT</button>
+          </div>
+        </div>`;
+      }).join('');
+      grid.querySelectorAll('[data-credit]').forEach(btn=>{
+        btn.addEventListener('click', e=>{
+          const key = e.currentTarget.dataset.credit;
+          const svc = 'Créditos';
+          const plan = key.split('|')[1];
+          selected = { svc, plan, price: PRICE[key], method:null, topupMethod:null };
+          document.getElementById('modalTitle').textContent = `Comprar ${svc}`;
+          document.getElementById('modalSub').textContent = plan;
+          document.getElementById('modalPrice').textContent = `$${selected.price.toFixed(2)}`;
+          document.querySelectorAll('.payopt').forEach(p=> p.style.borderColor='rgba(255,255,255,.12)');
+          openModal();
+        });
+      });
+    }
+    renderCreditCards();
+
+    // Webhooks: credenciales y topups (placeholders)
+    async function sendCredentialsWebhook(order){
+      try{ await fetch('/api/webhooks/credentials', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(order)}); }
+      catch(e){ console.log('Webhook credenciales (simulado):', e.message); }
+    }
+    async function sendTopupWebhook(payload){
+      try{ await fetch('/api/webhooks/topup', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload)}); }
+      catch(e){ console.log('Webhook topup (simulado):', e.message); }
+    }
+
+    // Integración de compra simulada: si es CrÃ©ditos, deposita con bono en billetera
+    function isCreditPlan(svc){ return svc==='Créditos'; }
+    function getBonusForPlan(plan){
+      if(plan.includes('10')) return .10;
+      if(plan.includes('25')) return .20;
+      if(plan.includes('50')) return .30;
+      if(plan.includes('100')) return .40;
+      return 0;
+    }
+
+    // Sobrescribimos el flujo "Pagar" para créditos vs servicios
+    const oldPayNow = document.getElementById('btnPayNow').onclick;
+    document.getElementById('btnPayNow').onclick = null;
+    document.getElementById('btnPayNow').addEventListener('click', ()=>{
+      if(!selected.method){ alert('Elige un método de pago'); return }
+      if(selected.method==='WALLET'){
+        const bal = wallet.get();
+        if(bal < selected.price){ alert('Saldo insuficiente en billetera'); return }
+        wallet.set(bal - selected.price);
+        if(isCreditPlan(selected.svc)){
+          const bonus = getBonusForPlan(selected.plan);
+          const credits = selected.price * (1+bonus);
+          wallet.set(wallet.get() + credits);
+          updateWalletUI();
+          alert(`Recarga aplicada: +${credits.toFixed(2)} créditos (incluye bono ${Math.round(bonus*100)}%).`);
+          sendTopupWebhook({plan:selected.plan, amount:selected.price, credits, method:selected.method});
+        }else{
+          updateWalletUI();
+          alert(`Pago con saldo: $${selected.price.toFixed(2)} por ${selected.svc} · ${selected.plan}`);
+          sendCredentialsWebhook({svc:selected.svc, plan:selected.plan, method:'WALLET', price:selected.price});
+        }
+        closeModal();
+        return;
+      }
+      // Otros métodos (simulados)
+      if(isCreditPlan(selected.svc)){
+        const bonus = getBonusForPlan(selected.plan);
+        const credits = selected.price * (1+bonus);
+        wallet.set(wallet.get() + credits);
+        updateWalletUI();
+        alert(`Pago ${selected.method} exitoso. Créditos añadidos: ${credits.toFixed(2)}`);
+        sendTopupWebhook({plan:selected.plan, amount:selected.price, credits, method:selected.method});
+      } else {
+        alert(`Procesando pago ${selected.method} por $${selected.price.toFixed(2)} de ${selected.svc} · ${selected.plan}`);
+        sendCredentialsWebhook({svc:selected.svc, plan:selected.plan, method:selected.method, price:selected.price});
+      }
+      closeModal();
+    });
+
+    // PWA: generar manifest como data URL y registrar Service Worker desde Blob
+    (function initPWA(){
+      const manifest = {
+        name:'Skyplay Mayoristas', short_name:'Skyplay B2B', start_url:'./', display:'standalone', background_color:'#0f1428', theme_color:'#2563eb',
+        icons:[
+          {src:'https://dummyimage.com/192x192/2563eb/ffffff&text=S', sizes:'192x192', type:'image/png'},
+          {src:'https://dummyimage.com/512x512/2563eb/ffffff&text=S', sizes:'512x512', type:'image/png'}
+        ]
+      };
+      const blob = new Blob([JSON.stringify(manifest)], {type:'application/manifest+json'});
+      const url = URL.createObjectURL(blob);
+      document.getElementById('manifestLink').setAttribute('href', url);
+
+      if('serviceWorker' in navigator){
+        const swCode = `self.addEventListener('install', e=>{e.waitUntil(caches.open('sky-cache-v1').then(c=>c.addAll(['./'])))});
+                         self.addEventListener('fetch', e=>{e.respondWith(caches.match(e.request).then(r=>r||fetch(e.request)))})`;
+        const swBlob = new Blob([swCode], {type:'text/javascript'});
+        const swUrl = URL.createObjectURL(swBlob);
+        navigator.serviceWorker.register(swUrl, {scope:'./'}).catch(console.error);
+      }
+    })();
+
+    // Logout
+async function logout() {
+  try {
+    await fetch('/api/auth/logout', { 
+      method: 'POST', 
+      credentials: 'include' 
+    });
+  } catch(e) {
+    console.error(e);
+  }
+  window.location.href = './login.html';
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,435 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Acceso Mayoristas — Skyplay</title>
+  <link id="manifestLink" rel="manifest" href="#">
+  <style>
+    :root{
+      --bg:#0f1428;
+      --card:#121a33;
+      --text:#e5e7eb;
+      --muted:#94a3b8;
+      --primary:#2563eb;
+      --primary-700:#1d4ed8;
+      --accent:#22c55e;
+      --danger:#ef4444;
+      --input:#0b1022;
+      --ring:#3b82f6;
+      --radius:18px;
+    
+      /* Modal styles */
+.modal{
+  position:fixed; 
+  inset:0; 
+  display:flex; 
+  align-items:center; 
+  justify-content:center; 
+  background:rgba(0,0,0,.6); 
+  backdrop-filter:blur(4px); 
+  visibility:hidden;
+  opacity:0;
+  transition:.25s;
+  z-index:9999;
+}
+.modal.open{
+  visibility:visible;
+  opacity:1;
+}
+.modal-content{
+  background:var(--card); 
+  padding:20px; 
+  border-radius:14px; 
+  width:92%; 
+  border:1px solid rgba(255,255,255,.12);
+}
+.modal-head{
+  display:flex; 
+  justify-content:space-between; 
+  align-items:center; 
+  gap:10px;
+  margin-bottom:12px;
+}
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{
+      margin:0; background:radial-gradient(1200px 800px at 20% -10%, #1a2448 0%, transparent 60%),
+                 radial-gradient(1200px 800px at 120% 110%, #101633 0%, transparent 60%), var(--bg);
+      color:var(--text); font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji","Segoe UI Emoji";
+      display:grid; place-items:center; padding:24px;
+    }
+    .wrap{width:100%; max-width:960px; display:grid; gap:24px; grid-template-columns: 1.1fr .9fr}
+    @media (max-width: 900px){ .wrap{grid-template-columns: 1fr} }
+    .card{
+      background:linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.02));
+      backdrop-filter: blur(6px);
+      border:1px solid rgba(255,255,255,.08);
+      border-radius: var(--radius);
+      box-shadow: 0 20px 60px rgba(0,0,0,.35);
+      padding:28px;
+    }
+    .brand{display:flex; align-items:center; gap:12px; margin-bottom:8px}
+    .logo{width:42px; height:42px; border-radius:12px; background:var(--primary); display:grid; place-items:center; font-weight:800}
+    h1{font-size:1.4rem; margin:0 0 6px}
+    p.lead{margin:0; color:var(--muted); font-size:.95rem}
+    .form{display:grid; gap:14px; margin-top:18px}
+    label{font-size:.9rem; color:#cbd5e1}
+    .input{
+      width:100%; padding:12px 14px; border-radius:12px; border:1px solid rgba(255,255,255,.08);
+      background:var(--input); color:var(--text); outline:none; font-size:1rem;
+    }
+    .input:focus{border-color:var(--ring); box-shadow: 0 0 0 4px rgba(37,99,235,.15)}
+    .row{display:grid; grid-template-columns:1fr auto; gap:10px; align-items:center}
+    .btn{
+      display:inline-flex; justify-content:center; align-items:center; gap:8px;
+      padding:12px 16px; border-radius:12px; border:1px solid rgba(255,255,255,.1);
+      background:var(--primary); color:white; font-weight:600; cursor:pointer; text-decoration:none;
+      transition:.18s ease-in-out;
+    }
+    .btn:hover{background:var(--primary-700)}
+    .btn.secondary{ background:transparent; color:var(--text); border-color: rgba(255,255,255,.16) }
+    .actions{display:flex; gap:12px; flex-wrap:wrap}
+    .otpGrid{
+      display:grid; grid-template-columns: repeat(6, 1fr); gap:10px; margin-top:6px;
+    }
+    .otpInput{
+      width:100%; text-align:center; padding:12px 0; font-size:1.2rem; font-weight:700;
+      border-radius:12px; border:1px solid rgba(255,255,255,.12); background:#0c1329; color:var(--text);
+    }
+    .meta{display:flex; justify-content:space-between; align-items:center; color:var(--muted); font-size:.9rem}
+    .hint{color:var(--muted); font-size:.85rem}
+    .toast{display:none; position:fixed; bottom:16px; left:50%; transform:translateX(-50%); padding:12px 16px;
+      border-radius:12px; background:#111827; color:#e5e7eb; border:1px solid rgba(255,255,255,.1)}
+    .toast.ok{background:#052e16; border-color:#14532d; color:#d1fae5}
+    .toast.err{background:#3f1d1d; border-color:#7f1d1d; color:#fee2e2}
+    .hero{display:grid; place-items:center; text-align:center; padding:28px; border-radius:var(--radius);
+      background:linear-gradient(180deg, rgba(37,99,235,.12), rgba(37,99,235,.05)); border:1px solid rgba(59,130,246,.25)}
+    .hero h2{margin:0 0 8px; font-size:1.6rem}
+    .hero p{margin:0; color:#cbd5e1}
+    .footnote{margin-top:12px; font-size:.85rem; color:#cbd5e1}
+    .link{color:#93c5fd; text-decoration:underline; cursor:pointer}
+  
+    /* hide legacy OTP input if exists */
+    #otp{ display:none !important; }
+
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <section class="card">
+      <div class="brand">
+        <div class="logo">S</div>
+        <div>
+          <h1>Acceso para Mayoristas</h1>
+          <p class="lead">Inicia sesión con Usuario/Correo + Contraseña + OTP</p>
+        </div>
+      </div>
+
+      <div class="form">
+        <div>
+          <label for="user">Usuario o correo</label>
+          <input id="user" class="input" placeholder="correo@empresa.com" autocomplete="username" />
+          <button id="btnSetupTotp" class="btn secondary" type="button" style="margin-top:8px">
+    🔐 Configurar Google Authenticator
+          </button>
+        </div>
+
+       <div>
+  <label for="pass">Contraseña</label>
+  <div style="position:relative">
+    <input id="pass" class="input" type="password" placeholder="••••••••" autocomplete="current-password" style="padding-right:40px" />
+    <button type="button" id="togglePass" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);background:transparent;border:none;cursor:pointer;font-size:1.2rem;color:#94a3b8">👁️</button>
+  </div>
+  <div class="hint">Pon tu contraseña.</div>
+</div>
+
+<div>
+  <div class="meta">
+    <label>Código de Google Authenticator</label>
+    <span style="color:#94a3b8;font-size:0.85rem">(6 dígitos, cambia cada 30 seg)</span>
+  </div>
+  <div id="otpGrid" class="otpGrid"></div>
+</div>
+
+<div class="actions">
+  <button id="btnLogin" class="btn" type="button">Ingresar</button>
+  <button id="btnForgot" class="btn secondary" type="button">Recuperar contraseña</button>
+</div>
+
+        <div class="footnote">
+          ¿Aún no eres mayorista? <a class="link" href="#" id="lnkApply">Solicitar acceso</a>
+        </div>
+      </div>
+    </section>
+
+    <section class="hero">
+      <h2>Catálogo mayorista</h2>
+      <p>Tras validar tu OTP podrás ver el catálogo y comprar en condiciones preferenciales.</p>
+      <p class="footnote">PWA listo: puedes instalar este acceso en tu celular y entrar más rápido.</p>
+    </section>
+  </div>
+  <!-- Modal de Recuperación -->
+<div class="modal" id="resetModal">
+  <div class="modal-content" style="max-width:450px">
+    <div class="modal-head">
+      <h3 style="margin:0;color:#e5e7eb">Recuperar Contraseña</h3>
+      <button class="btn" onclick="document.getElementById('resetModal').classList.remove('open')">✕</button>
+    </div>
+    
+    <p style="color:#cbd5e1;font-size:0.9rem;margin:12px 0">Usa tu email y código de Google Authenticator para restablecer tu contraseña.</p>
+    
+    <div style="display:grid;gap:14px;margin-top:16px">
+      <div>
+        <label style="font-size:0.9rem;color:#cbd5e1">Email</label>
+        <input id="resetEmail" class="input" type="email" placeholder="correo@empresa.com" />
+      </div>
+      
+      <div>
+        <label style="font-size:0.9rem;color:#cbd5e1">Código de Google Authenticator</label>
+        <input id="resetTotp" class="input" type="text" maxlength="6" placeholder="123456" inputmode="numeric" />
+      </div>
+      
+      <div>
+        <label style="font-size:0.9rem;color:#cbd5e1">Nueva Contraseña</label>
+        <input id="resetNewPass" class="input" type="password" placeholder="Mínimo 8 caracteres" />
+      </div>
+      
+      <div>
+        <label style="font-size:0.9rem;color:#cbd5e1">Confirmar Contraseña</label>
+        <input id="resetConfirmPass" class="input" type="password" placeholder="Repite la contraseña" />
+      </div>
+      
+      <button class="btn primary" id="btnResetPassword" style="margin-top:8px">
+        Cambiar Contraseña
+      </button>
+    </div>
+  </div>
+</div>
+
+<div id="toast" class="toast"></div>
+
+  <div id="toast" class="toast"></div>
+
+  <!-- LÓGICA COMPLETA DEL LOGIN + PWA -->
+  <script>
+  // Remover cualquier input OTP legado (#otp) para evitar caja extra
+  document.addEventListener('DOMContentLoaded', ()=>{
+    const legacy = document.getElementById('otp');
+    if (legacy) legacy.remove();
+  });
+
+  // ========= Utilidades UI =========
+  const otpGrid = document.getElementById('otpGrid');
+  for (let i = 0; i < 6; i++) {
+    const inp = document.createElement('input');
+    inp.className = 'otpInput'; inp.maxLength = 1; inp.inputMode = 'numeric';
+    inp.addEventListener('input', e => {
+      e.target.value = e.target.value.replace(/\D/g, '');
+      if (e.target.value) e.target.nextElementSibling?.focus();
+    });
+    inp.addEventListener('keydown', e => { if (e.key === 'Backspace' && !e.target.value) e.target.previousElementSibling?.focus(); });
+    otpGrid.appendChild(inp);
+  }
+  const $ = (sel) => document.querySelector(sel);
+function getOTP(){
+  return Array.from(document.querySelectorAll('.otpInput'))
+    .map(i => i.value || '')
+    .join('');
+}
+function toast(msg, ok=false){
+  const t = $('#toast');
+  t.textContent = msg;
+  t.className = 'toast ' + (ok ? 'ok' : 'err');
+  t.style.display = 'block';
+  setTimeout(() => { t.style.display = 'none'; }, 2600);
+}
+function fmt(t){
+  var m = String(Math.floor(t/60)).padStart(2,'0');
+  var s = String(Math.floor(t%60)).padStart(2,'0');
+  return m + ':' + s;
+}
+
+  
+  // ========= Handlers =========
+  //BOTON LOGIN//
+ $('#btnLogin').onclick = async ()=>{
+  const user = $('#user').value.trim();
+  const pass = $('#pass').value.trim();
+  const code = getOTP();
+
+  if (!user) { toast('Ingresa tu correo/usuario'); return; }
+  if (!pass) { toast('Ingresa tu contraseña'); return; }
+  if (code.length < 6) { toast('OTP requerido (6 dígitos)'); return; }
+  
+  try{
+    const res = await fetch('/api/auth/login-otp', {
+      method:'POST', 
+      headers:{'Content-Type':'application/json'},
+      credentials: 'include',
+      body: JSON.stringify({ 
+        email: user,
+        password: pass,
+        otp: code
+      })
+    });
+    
+    if (res.ok) {
+      
+      location.href = './panel_mayorista.html';
+    } else {
+      const data = await res.json();
+      toast(data.message || 'Credenciales inválidas');
+    }
+  } catch(err) {
+    toast('Error al conectar con el servidor');
+    console.error(err);
+  }
+};
+
+   
+  
+
+ $('#btnForgot').onclick = ()=>{
+  document.getElementById('resetModal').classList.add('open');
+};
+
+// Enlace de "Solicitar acceso"
+$('#lnkApply').onclick = (e)=>{
+  e.preventDefault();
+  // Cambia este link al formulario real cuando lo tengas
+  window.location.href = './panel_mayorista.html';
+
+};
+
+  // ========= PWA (manifest + service worker) =========
+  (function initPWA(){
+    const manifest = { name:'Skyplay Mayoristas – Acceso', short_name:'Skyplay Login', start_url:'./login.html', display:'standalone', background_color:'#0f1428', theme_color:'#2563eb', icons:[
+      {src:'https://dummyimage.com/192x192/2563eb/ffffff&text=S',sizes:'192x192',type:'image/png'},
+      {src:'https://dummyimage.com/512x512/2563eb/ffffff&text=S',sizes:'512x512',type:'image/png'}
+    ]};
+    const blob = new Blob([JSON.stringify(manifest)], {type:'application/manifest+json'});
+    const url = URL.createObjectURL(blob);
+    document.getElementById('manifestLink').setAttribute('href', url);
+    if ('serviceWorker' in navigator){
+      const swCode = `
+          self.addEventListener('install', e => {
+            e.waitUntil(caches.open('sky-login-v1').then(c => c.addAll(['./login.html'])));
+          });
+          self.addEventListener('fetch', e => {
+            const { method, url } = e.request;
+            // Evita cachear /api/*
+            if (method !== 'GET' || new URL(url).pathname.startsWith('/api/')) { return; }
+            e.respondWith(caches.match(e.request).then(r => r || fetch(e.request)));
+          });
+      `;
+      const swBlob = new Blob([swCode], {type:'text/javascript'});
+      const swUrl = URL.createObjectURL(swBlob);
+      navigator.serviceWorker.register(swUrl, { scope:'./' }).catch(console.error);
+    }
+  })();
+
+  
+// Setup TOTP
+// Setup TOTP
+$('#btnSetupTotp').onclick = async () => {
+  const email = $('#user').value.trim();
+  if (!email) { toast('Ingresa tu correo primero'); return; }
+
+  try {
+    const res = await fetch('/api/auth/setup-totp', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email })
+    });
+
+    if (!res.ok) throw new Error('Error al generar QR');
+
+    const data = await res.json();
+    
+    // Mostrar QR en un modal simple
+    const qrModal = document.createElement('div');
+    qrModal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.9);display:flex;align-items:center;justify-content:center;z-index:9999;padding:20px';
+    qrModal.innerHTML = `
+      <div style="background:#fff;padding:30px;border-radius:16px;text-align:center;max-width:400px;width:100%">
+        <h3 style="color:#000;margin:0 0 16px">Configurar Autenticador</h3>
+        
+        <div style="margin-bottom:20px">
+          <p style="color:#666;margin:0 0 10px;font-size:14px"><strong>Opción 1: Escanear QR (desde PC o tablet)</strong></p>
+          <img src="${data.qrcode}" style="width:200px;height:200px;margin:0 auto"/>
+        </div>
+        
+        <div style="background:#f3f4f6;padding:15px;border-radius:8px;margin-bottom:20px">
+          <p style="color:#666;margin:0 0 8px;font-size:14px"><strong>Opción 2: Código manual (para celular)</strong></p>
+          <code style="background:#1f2937;color:#10b981;padding:8px 12px;border-radius:6px;font-size:13px;display:block;word-break:break-all;margin-bottom:8px">${data.secret}</code>
+          <button onclick="navigator.clipboard.writeText('${data.secret}').then(() => alert('Código copiado'))" style="padding:8px 16px;background:#2563eb;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px">
+            📋 Copiar código
+          </button>
+        </div>
+        
+        <p style="color:#666;margin:0 0 16px;font-size:13px">Usa Google Authenticator o Authy</p>
+        <button onclick="this.closest('div').parentElement.remove()" style="padding:12px 24px;background:#2563eb;color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:600">Listo</button>
+      </div>
+    `;
+    document.body.appendChild(qrModal);
+
+    toast('Configura tu autenticador con el QR o código manual', true);
+  } catch (err) {
+    toast('Error al configurar autenticador');
+    console.error(err);
+  }
+};
+
+// Recuperar contraseña con TOTP
+document.getElementById('btnResetPassword').addEventListener('click', async () => {
+  const email = document.getElementById('resetEmail').value.trim();
+  const totp = document.getElementById('resetTotp').value.trim();
+  const newPass = document.getElementById('resetNewPass').value;
+  const confirmPass = document.getElementById('resetConfirmPass').value;
+
+  if (!email) { toast('Ingresa tu email'); return; }
+  if (totp.length !== 6) { toast('Código TOTP debe ser de 6 dígitos'); return; }
+  if (newPass.length < 8) { toast('La contraseña debe tener al menos 8 caracteres'); return; }
+  if (newPass !== confirmPass) { toast('Las contraseñas no coinciden'); return; }
+
+  try {
+    const res = await fetch('/api/auth/reset-password-totp', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, totp, newPassword: newPass })
+    });
+
+    if (res.ok) {
+      toast('Contraseña actualizada correctamente', true);
+      document.getElementById('resetModal').classList.remove('open');
+      // Limpiar campos
+      document.getElementById('resetEmail').value = '';
+      document.getElementById('resetTotp').value = '';
+      document.getElementById('resetNewPass').value = '';
+      document.getElementById('resetConfirmPass').value = '';
+    } else {
+      const data = await res.json();
+      toast(data.message || 'Error al restablecer contraseña');
+    }
+  } catch (err) {
+    toast('Error al conectar con el servidor');
+    console.error(err);
+  }
+});
+
+// Toggle mostrar/ocultar contraseña
+document.getElementById('togglePass').addEventListener('click', () => {
+  const pass = document.getElementById('pass');
+  const btn = document.getElementById('togglePass');
+  if (pass.type === 'password') {
+    pass.type = 'text';
+    btn.textContent = '🙈';
+  } else {
+    pass.type = 'password';
+    btn.textContent = '👁️';
+  }
+});
+  </script>
+</body>
+</html>
