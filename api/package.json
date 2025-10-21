@@ -31,6 +31,7 @@
     "qrcode": "^1.5.4",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.2",
+    "stripe": "^19.1.0",
     "typeorm": "^0.3.27"
   },
   "devDependencies": {

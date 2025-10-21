@@ -26,12 +26,11 @@
                  radial-gradient(1200px 800px at 120% 110%, #101633 0%, transparent 60%), var(--bg);
       color:var(--text); font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
     }
-    /* Guard visual */
     html.auth-hide { visibility: hidden; }
     #auth-veil{position:fixed;inset:0;background:#0b1224;display:flex;align-items:center;justify-content:center;color:#e5e7eb;font-family:ui-sans-serif,system-ui;z-index:999999}
 
     .container{max-width:1100px;margin:0 auto;padding:24px}
-    header{display:flex;align-items:center;justify-content:space-between;margin-bottom:18px}
+    header{display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;flex-wrap:wrap;gap:12px}
     .brand{display:flex;align-items:center;gap:12px}
     .logoBox{width:44px;height:44px;border-radius:12px;background:#0b1224;border:1px solid rgba(255,255,255,.1);display:grid;place-items:center;overflow:hidden}
     .logoBox img{max-width:100%;max-height:100%}
@@ -41,8 +40,11 @@
     .tag.red{border-color:rgba(239,68,68,.35);background:rgba(239,68,68,.12);color:#fecaca}
     .tag.yellow{border-color:rgba(245,158,11,.35);background:rgba(245,158,11,.12);color:#fde68a}
     .actions{display:flex;gap:10px;flex-wrap:wrap}
-    .btn{display:inline-flex;align-items:center;gap:8px;padding:10px 14px;border-radius:12px;border:1px solid rgba(255,255,255,.12);cursor:pointer;background:var(--primary);color:#fff;font-weight:600}
+    .btn{display:inline-flex;align-items:center;gap:8px;padding:10px 14px;border-radius:12px;border:1px solid rgba(255,255,255,.12);cursor:pointer;background:var(--primary);color:#fff;font-weight:600;font-size:.9rem;transition:.2s}
+    .btn:hover{background:var(--primary-700)}
     .btn.secondary{background:transparent;color:var(--text)}
+    .btn.secondary:hover{background:rgba(255,255,255,.05)}
+    .btn.small{padding:6px 10px;font-size:.85rem}
     .btn:disabled{opacity:.6;cursor:not-allowed}
     .grid{display:grid;gap:16px;grid-template-columns:1.1fr .9fr}
     @media (max-width: 1024px){ .grid{grid-template-columns:1fr} }
@@ -50,81 +52,110 @@
       border:1px solid rgba(255,255,255,.08);border-radius: var(--radius);box-shadow: 0 20px 60px rgba(0,0,0,.35);padding:18px}
     .card h2{margin:0 0 8px;font-size:1.1rem}
     .muted{color:var(--muted);font-size:.93rem;margin:6px 0 0}
+    
+    /* Filtros */
+    .filters{display:flex;gap:8px;margin:12px 0;flex-wrap:wrap}
+    .filter-btn{padding:8px 16px;border-radius:999px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.04);color:var(--text);cursor:pointer;font-size:.9rem;transition:.2s;white-space:nowrap}
+    .filter-btn:hover{background:rgba(255,255,255,.08)}
+    .filter-btn.active{background:var(--primary);color:#fff;border-color:var(--primary)}
+    .filter-btn .count{opacity:.7;margin-left:4px}
+    
+    /* Buscador */
+    .search-box{width:100%;padding:10px 14px;border-radius:12px;border:1px solid rgba(255,255,255,.12);background:#0b1224;color:var(--text);font-size:.95rem;margin-bottom:12px}
+    .search-box:focus{outline:none;border-color:var(--ring);box-shadow:0 0 0 3px rgba(37,99,235,.15)}
+    
     table{width:100%;border-collapse:separate;border-spacing:0 10px}
-    thead th{color:#cbd5e1;font-weight:600;text-align:left;padding:8px}
+    thead th{color:#cbd5e1;font-weight:600;text-align:left;padding:8px;font-size:.9rem}
     tbody td{padding:12px;background:#0b1224;border-top:1px solid rgba(255,255,255,.08);border-bottom:1px solid rgba(255,255,255,.08)}
     tbody tr td:first-child{border-left:1px solid rgba(255,255,255,.08);border-top-left-radius:12px;border-bottom-left-radius:12px}
     tbody tr td:last-child{border-right:1px solid rgba(255,255,255,.08);border-top-right-radius:12px;border-bottom-right-radius:12px}
-    .status{padding:4px 8px;border-radius:999px;font-size:.8rem}
+    .status{padding:4px 8px;border-radius:999px;font-size:.8rem;font-weight:600}
     .status.active{background:rgba(34,197,94,.12);color:#86efac;border:1px solid rgba(34,197,94,.35)}
     .status.expired{background:rgba(239,68,68,.12);color:#fecaca;border:1px solid rgba(239,68,68,.35)}
     .status.soon{background:rgba(245,158,11,.12);color:#fde68a;border:1px solid rgba(245,158,11,.35)}
+    .status.canceled{background:rgba(100,116,139,.12);color:#cbd5e1;border:1px solid rgba(100,116,139,.35)}
+    
+    /* Credenciales */
+    .cred-row{display:flex;align-items:center;gap:8px;margin-top:8px;flex-wrap:wrap}
+    .cred-label{font-size:.85rem;color:var(--muted);min-width:60px}
+    .cred-value{font-family:ui-monospace,monospace;font-size:.85rem;color:#86efac;background:#0a1b0e;padding:4px 8px;border-radius:6px;flex:1;min-width:150px}
+    .cred-hidden{color:var(--muted)}
+    
     .toast{display:none; position:fixed; bottom:16px; left:50%; transform:translateX(-50%); padding:12px 16px;
-      border-radius:12px; background:#111827; color:#e5e7eb; border:1px solid rgba(255,255,255,.1)}
+      border-radius:12px; background:#111827; color:#e5e7eb; border:1px solid rgba(255,255,255,.1);z-index:10000}
     .toast.ok{background:#052e16; border-color:#14532d; color:#d1fae5}
     .toast.err{background:#3f1d1d; border-color:#7f1d1d; color:#fee2e2}
     .banner{padding:10px 14px;border-radius:12px;border:1px solid rgba(245,158,11,.35);background:rgba(245,158,11,.12);color:#fde68a;margin:10px 0}
     .banner.danger{border-color:rgba(239,68,68,.35);background:rgba(239,68,68,.12);color:#fecaca}
     .right{display:flex; gap:8px; align-items:center; flex-wrap:wrap}
     .mono{font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size:.85rem}
+    
+    /* Modal */
+    .modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.8);z-index:9999;align-items:center;justify-content:center;padding:20px}
+    
+    @media (max-width: 768px){
+      .filter-btn{font-size:.85rem;padding:6px 12px}
+      .cred-row{flex-direction:column;align-items:flex-start}
+      .cred-value{width:100%}
+    }
   </style>
-
-  <!-- Anti-parpadeo: ocultar hasta validar sesión -->
-  <script>
-    //document.documentElement.classList.add('auth-hide');
-  </script>
 </head>
 <body>
   <div id="auth-veil">Verificando acceso…</div>
 
   <div class="container">
-  <header>
-    <div class="brand">
-      <div class="logoBox">
-        <img src="./White on Transparent.png" alt="Skyplay" style="object-fit:contain;padding:4px;filter:brightness(0) invert(1)"/>
-  </div>
-  <div>
-    <h1 id="tenantName">Panel Mayorista</h1>
-    <div class="right">
-  <span id="subBadge" class="tag">Suscripción: —</span>
-  <span id="storeBadge" class="tag">Tienda: —</span>
-  <span id="statusBadge" class="tag">Estado: —</span>
-</div>
+    <header>
+      <div class="brand">
+        <div class="logoBox">
+          <img src="./White on Transparent.png" alt="Skyplay" style="object-fit:contain;padding:4px;filter:brightness(0) invert(1)"/>
+        </div>
+        <div>
+          <h1 id="tenantName">Panel Mayorista</h1>
+          <div class="right">
+            <span id="subBadge" class="tag">Suscripción: —</span>
+            <span id="storeBadge" class="tag">Tienda: —</span>
+            <span id="statusBadge" class="tag">Estado: —</span>
+          </div>
+        </div>
+      </div>
+      <div class="actions">
+        <a class="btn secondary" href="./index.html">Ir a la Tienda</a>
+        <button id="btnLogout" class="btn secondary">Cerrar sesión</button>
+      </div>
+    </header>
+
+    <section id="banners"></section>
+
+    <!-- Botones de activación -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin:16px 0">
+      <div class="card" style="text-align:center;padding:24px" id="cardSubscription">
+        <!-- Contenido dinámico -->
+      </div>
+      <div class="card" style="text-align:center;padding:24px">
+        <h3 style="margin:0 0 8px;font-size:1.1rem">🛍️ Tienda Personalizada</h3>
+        <p class="muted" style="margin:0 0 16px">Vende a tus clientes con tu propia marca y dominio personalizado.</p>
+        <button class="btn" id="btnActivateStore" style="width:100%;background:#7c3aed">Activar Mi Tienda</button>
+        <small class="muted" style="display:block;margin-top:8px">Próximamente disponible</small>
       </div>
     </div>
-    <div class="actions">
-      <a class="btn secondary" href="./index.html">Ir a la Tienda</a>
-      <button id="btnLogout" class="btn secondary">Cerrar sesión</button>
-    </div>
-  </header>
-
-    <section id="banners"></section>
-
-    <section id="banners"></section>
-
-<!-- Botones de activación -->
-<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin:16px 0">
-  <div class="card" style="text-align:center;padding:24px" id="cardSubscription">
-  <!-- Contenido se genera dinámicamente -->
-</div>
-
-  <div class="card" style="text-align:center;padding:24px">
-    <h3 style="margin:0 0 8px;font-size:1.1rem">🛍️ Tienda Personalizada</h3>
-    <p class="muted" style="margin:0 0 16px">Vende a tus clientes con tu propia marca y dominio personalizado.</p>
-    <button class="btn" id="btnActivateStore" style="width:100%;background:#7c3aed">
-      Activar Mi Tienda
-    </button>
-    <small class="muted" style="display:block;margin-top:8px">Próximamente disponible</small>
-  </div>
-</div>
-
-<div class="grid">
-  <!-- resto del código... -->
 
     <div class="grid">
+      <!-- Servicios -->
       <section class="card">
         <h2>Mis servicios</h2>
-        <p class="muted">Renueva tus cuentas antes del vencimiento para evitar interrupciones.</p>
+        <p class="muted">Gestiona tus cuentas y credenciales activas.</p>
+        
+        <!-- Buscador -->
+        <input type="text" id="searchServices" class="search-box" placeholder="🔍 Buscar por cuenta, producto o credencial...">
+        
+        <!-- Filtros -->
+        <div class="filters">
+          <button class="filter-btn active" data-filter="all">Todos <span class="count" id="countAll">0</span></button>
+          <button class="filter-btn" data-filter="active">Activos <span class="count" id="countActive">0</span></button>
+          <button class="filter-btn" data-filter="soon">Por vencer <span class="count" id="countSoon">0</span></button>
+          <button class="filter-btn" data-filter="expired">Vencidos <span class="count" id="countExpired">0</span></button>
+        </div>
+        
         <div style="overflow:auto">
           <table id="tblServices">
             <thead>
@@ -141,9 +172,19 @@
         </div>
       </section>
 
+      <!-- Órdenes -->
       <section class="card">
         <h2>Mis órdenes recientes</h2>
         <p class="muted">Historial de compras y renovaciones.</p>
+        
+        <!-- Filtros de fecha -->
+        <div class="filters">
+          <button class="filter-btn active" data-period="all">Todo</button>
+          <button class="filter-btn" data-period="7">7 días</button>
+          <button class="filter-btn" data-period="30">30 días</button>
+          <button class="filter-btn" data-period="90">3 meses</button>
+        </div>
+        
         <div style="overflow:auto">
           <table id="tblOrders">
             <thead>
@@ -162,101 +203,116 @@
     </div>
   </div>
 
-  <!-- Modal de Suscripción -->
-<div class="modal" id="modalSubscription" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.8);z-index:9999;align-items:center;justify-content:center;padding:20px">
-  <div class="card" style="max-width:600px;width:100%;padding:28px">
+  <!-- Modal Suscripción Preferencial -->
+  <div class="modal" id="modalSubscription">
+    <div class="card" style="max-width:600px;width:100%;padding:28px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+        <h2 style="margin:0">🎯 Activar Suscripción Preferencial</h2>
+        <button class="btn secondary" onclick="closeSubscriptionModal()" style="padding:8px 12px">✕</button>
+      </div>
+      <p class="muted" style="margin:0 0 20px">Elige tu plan y obtén descuentos en todos los productos del catálogo.</p>
+      <div style="display:grid;gap:16px;margin-bottom:24px">
+        <div class="card" style="cursor:pointer;border:2px solid transparent;transition:0.2s" onclick="selectPlan('monthly', 9.95)">
+          <div style="display:flex;justify-content:space-between;align-items:center">
+            <div>
+              <h3 style="margin:0 0 4px;font-size:1.1rem">Mensual</h3>
+              <p class="muted" style="margin:0">Pago mes a mes, sin compromiso</p>
+            </div>
+            <div style="text-align:right">
+              <div style="font-size:1.8rem;font-weight:800;color:#86efac">$9.95</div>
+              <div class="muted" style="font-size:0.85rem">/mes</div>
+            </div>
+          </div>
+        </div>
+        <div class="card" style="cursor:pointer;border:2px solid transparent;transition:0.2s" onclick="selectPlan('quarterly', 26.87)">
+          <div style="display:flex;justify-content:space-between;align-items:center">
+            <div>
+              <h3 style="margin:0 0 4px;font-size:1.1rem">3 Meses <span style="background:#22c55e;color:#000;padding:2px 6px;border-radius:4px;font-size:0.75rem;margin-left:6px">-10%</span></h3>
+              <p class="muted" style="margin:0">Ahorra $2.98 • $8.96/mes</p>
+            </div>
+            <div style="text-align:right">
+              <div style="font-size:1.8rem;font-weight:800;color:#86efac">$26.87</div>
+              <div class="muted" style="font-size:0.85rem;text-decoration:line-through">$29.85</div>
+            </div>
+          </div>
+        </div>
+        <div class="card" style="cursor:pointer;border:2px solid #22c55e;transition:0.2s;position:relative" onclick="selectPlan('semiannual', 47.76)">
+          <div style="position:absolute;top:-12px;right:12px;background:#22c55e;color:#000;padding:4px 10px;border-radius:999px;font-size:0.75rem;font-weight:700">Mejor valor</div>
+          <div style="display:flex;justify-content:space-between;align-items:center">
+            <div>
+              <h3 style="margin:0 0 4px;font-size:1.1rem">6 Meses <span style="background:#22c55e;color:#000;padding:2px 6px;border-radius:4px;font-size:0.75rem;margin-left:6px">-20%</span></h3>
+              <p class="muted" style="margin:0">Ahorra $11.94 • $7.96/mes</p>
+            </div>
+            <div style="text-align:right">
+              <div style="font-size:1.8rem;font-weight:800;color:#86efac">$47.76</div>
+              <div class="muted" style="font-size:0.85rem;text-decoration:line-through">$59.70</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div id="paymentMethods" style="display:none">
+        <h3 style="margin:0 0 12px;font-size:1rem">Selecciona método de pago:</h3>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <button class="btn" onclick="processPayment('card')" style="justify-content:center">💳 Tarjetas</button>
+          <button class="btn" onclick="processPayment('binance')" style="justify-content:center;background:#f0b90b;color:#000">Binance Pay</button>
+          <button class="btn" onclick="processPayment('paypal')" style="justify-content:center;background:#0070ba">PayPal</button>
+          <button class="btn" onclick="processPayment('sinpe')" style="justify-content:center;background:#16a34a">SINPE Móvil</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <!-- Modal Boton Renovación -->
+<div class="modal" id="modalRenew" style="display:none">
+  <div class="card" style="max-width:500px;width:100%;padding:28px">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
-      <h2 style="margin:0">🎯 Activar Suscripción Preferencial</h2>
-      <button class="btn secondary" onclick="closeSubscriptionModal()" style="padding:8px 12px">✕</button>
+      <div>
+        <h2 style="margin:0 0 4px">Renovar Servicio</h2>
+        <p class="muted" style="margin:0" id="renewServiceName"></p>
+      </div>
+      <button class="btn secondary" onclick="closeRenewModal()" style="padding:8px 12px">✕</button>
     </div>
 
-    <p class="muted" style="margin:0 0 20px">Elige tu plan y obtén descuentos en todos los productos del catálogo.</p>
-
-    <!-- Planes -->
-    <div style="display:grid;gap:16px;margin-bottom:24px">
-      <!-- Plan Mensual -->
-      <div class="card" style="cursor:pointer;border:2px solid transparent;transition:0.2s" onclick="selectPlan('monthly', 9.95)">
-        <div style="display:flex;justify-content:space-between;align-items:center">
-          <div>
-            <h3 style="margin:0 0 4px;font-size:1.1rem">Mensual</h3>
-            <p class="muted" style="margin:0">Pago mes a mes, sin compromiso</p>
-          </div>
-          <div style="text-align:right">
-            <div style="font-size:1.8rem;font-weight:800;color:#86efac">$9.95</div>
-            <div class="muted" style="font-size:0.85rem">/mes</div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Plan 3 Meses (10% descuento) -->
-      <div class="card" style="cursor:pointer;border:2px solid transparent;transition:0.2s" onclick="selectPlan('quarterly', 26.87)">
-        <div style="display:flex;justify-content:space-between;align-items:center">
-          <div>
-            <h3 style="margin:0 0 4px;font-size:1.1rem">3 Meses <span style="background:#22c55e;color:#000;padding:2px 6px;border-radius:4px;font-size:0.75rem;margin-left:6px">-10%</span></h3>
-            <p class="muted" style="margin:0">Ahorra $2.98 • $8.96/mes</p>
-          </div>
-          <div style="text-align:right">
-            <div style="font-size:1.8rem;font-weight:800;color:#86efac">$26.87</div>
-            <div class="muted" style="font-size:0.85rem;text-decoration:line-through">$29.85</div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Plan 6 Meses (20% descuento) -->
-      <div class="card" style="cursor:pointer;border:2px solid #22c55e;transition:0.2s;position:relative" onclick="selectPlan('semiannual', 47.76)">
-        <div style="position:absolute;top:-12px;right:12px;background:#22c55e;color:#000;padding:4px 10px;border-radius:999px;font-size:0.75rem;font-weight:700">Mejor valor</div>
-        <div style="display:flex;justify-content:space-between;align-items:center">
-          <div>
-            <h3 style="margin:0 0 4px;font-size:1.1rem">6 Meses <span style="background:#22c55e;color:#000;padding:2px 6px;border-radius:4px;font-size:0.75rem;margin-left:6px">-20%</span></h3>
-            <p class="muted" style="margin:0">Ahorra $11.94 • $7.96/mes</p>
-          </div>
-          <div style="text-align:right">
-            <div style="font-size:1.8rem;font-weight:800;color:#86efac">$47.76</div>
-            <div class="muted" style="font-size:0.85rem;text-decoration:line-through">$59.70</div>
-          </div>
-        </div>
+    <div style="background:rgba(34,197,94,.08);border:1px solid rgba(34,197,94,.25);border-radius:12px;padding:16px;margin-bottom:20px">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <span>Precio de renovación:</span>
+        <span style="font-size:1.4rem;font-weight:800;color:#86efac" id="renewPrice">$0.00</span>
       </div>
     </div>
 
-    <!-- Métodos de pago -->
-    <div id="paymentMethods" style="display:none">
-      <h3 style="margin:0 0 12px;font-size:1rem">Selecciona método de pago:</h3>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-        <button class="btn" onclick="processPayment('card')" style="justify-content:center">💳 Tarjetas</button>
-        <button class="btn" onclick="processPayment('binance')" style="justify-content:center;background:#f0b90b;color:#000">Binance Pay</button>
-        <button class="btn" onclick="processPayment('paypal')" style="justify-content:center;background:#0070ba">PayPal</button>
-        <button class="btn" onclick="processPayment('sinpe')" style="justify-content:center;background:#16a34a">SINPE Móvil</button>
-      </div>
+    <h3 style="margin:0 0 12px;font-size:1rem">Selecciona método de pago:</h3>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <button class="btn" onclick="processRenewal('card')" style="justify-content:center">💳 Tarjetas</button>
+      <button class="btn" onclick="processRenewal('binance')" style="justify-content:center;background:#f0b90b;color:#000">Binance Pay</button>
+      <button class="btn" onclick="processRenewal('sinpe')" style="justify-content:center;background:#16a34a">SINPE</button>
+      <button class="btn" onclick="processRenewal('wallet')" style="justify-content:center;background:#6366f1">Billetera</button>
     </div>
   </div>
 </div>
 
-<div id="toast" class="toast"></div>
-
   <div id="toast" class="toast"></div>
 
   <script>
-    // Utilidades
     const $ = (sel)=>document.querySelector(sel);
+    const $$ = (sel)=>document.querySelectorAll(sel);
     const fmtDate = (s)=>{
-      try{ const d = new Date(s); return d.toLocaleString(); }catch(_){ return s; }
+      try{ const d = new Date(s); return d.toLocaleString('es-ES', {day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}); }catch(_){ return s; }
     };
     const toast = (msg, ok=false)=>{
       const t = $('#toast'); t.textContent=msg; t.className='toast '+(ok?'ok':'err');
       t.style.display='block'; setTimeout(()=>t.style.display='none',2600);
     };
 
-    // Guardia de sesión (muestra contenido solo si hay cookie válida)
+    let allServices = [];
+    let allOrders = [];
+    let currentFilter = 'all';
+    let currentPeriod = 'all';
+
+    // Guardia de sesión
     (async () => {
       try {
         const me = await fetch('/api/auth/me', { credentials:'include' });
         if (!me.ok) throw new Error('no-auth');
-        const meJson = await me.json();
-
-        // Carga overview (branding, suscripción, estado)
         await loadOverview();
-
-        // Mostrar contenido
         document.documentElement.classList.remove('auth-hide');
         document.getElementById('auth-veil').remove();
       } catch {
@@ -269,313 +325,384 @@
         const r = await fetch('/api/me/overview', { credentials:'include' });
         if (!r.ok) throw new Error();
         const data = await r.json();
-        // branding
+        
         if (data.branding && data.branding.logo_url) {
-          const img = $('#brandLogo'); img.src = data.branding.logo_url;
+          const img = $('.logoBox img'); 
+          if(img) img.src = data.branding.logo_url;
         }
 
-        // banners de estado/suscripción
         renderBadgesAndBanners(data);
-
-        // tablas
-        renderServices(data.active_services || []);
-        renderOrders(data.last_orders || []);
+        allServices = data.active_services || [];
+        allOrders = data.last_orders || [];
+        renderServices();
+        renderOrders();
       } catch(e){
+        console.error(e);
         toast('No se pudo cargar el panel');
       }
     }
 
     function renderBadgesAndBanners(data){
-  const sub = data.subscription || {};
-  const wholesaler = data.wholesaler || {};
-  const subBadge = $('#subBadge');
-  const statusBadge = $('#statusBadge');
-  const banners = $('#banners');
-  banners.innerHTML = '';
+      const sub = data.subscription || {};
+      const wholesaler = data.wholesaler || {};
+      const subBadge = $('#subBadge');
+      const statusBadge = $('#statusBadge');
+      const storeBadge = $('#storeBadge');
+      const banners = $('#banners');
+      banners.innerHTML = '';
 
-  // Actualizar nombre del tenant (AGREGAR ESTO)
-  const tenantName = data.tenant_name || 'Panel Mayorista';
-  document.getElementById('tenantName').textContent = tenantName;
-  // Suscripción
-  var subTxt = '—';
-  var subClass = 'tag';
-  if (sub.status === 'active') {
-    subTxt = 'Activa (mejor precio)';
-    subClass = 'tag green';
-  } else if (sub.status === 'past_due') {
-    subTxt = 'Vencida / pendiente';
-    subClass = 'tag yellow';
-    var b1 = document.createElement('div');
-    b1.className='banner';
-    b1.innerHTML = 'Tu suscripción está <b>pendiente o vencida</b>. Renueva para mantener el precio preferencial.';
-    banners.appendChild(b1);
-  } else if (sub.status === 'canceled') {
-    subTxt = 'Cancelada';
-    subClass = 'tag red';
-    var b2 = document.createElement('div');
-    b2.className='banner danger';
-    b2.innerHTML = 'Tu suscripción está <b>cancelada</b>. Puedes reactivarla desde tu método de pago o contáctanos.';
-    banners.appendChild(b2);
-  } else {
-    subTxt = 'Sin suscripción preferencial';
-    var b3 = document.createElement('div');
-    b3.className='banner';
-    b3.innerHTML = 'No tienes una suscripción activa. Actívala para acceder a precios preferenciales.';
-    banners.appendChild(b3);
-  }
-  subBadge.className = subClass;
-  subBadge.textContent = 'Suscripción: ' + subTxt;
+      const tenantName = data.tenant_name || 'Panel Mayorista';
+      $('#tenantName').textContent = tenantName;
 
-  // Estado de mayorista (kill switch)
-  var stTxt = '—';
-  var stClass = 'tag';
-  if (wholesaler.status === 'active' || wholesaler.status === true) {
-    stTxt = 'Activo';
-    stClass = 'tag green';
-  } else if (wholesaler.status === 'suspended' || wholesaler.status === false) {
-    stTxt = 'Suspendido';
-    stClass = 'tag red';
-    var b4 = document.createElement('div');
-    b4.className='banner danger';
-    b4.innerHTML = 'Tu cuenta mayorista está <b>suspendida</b>. Las compras están deshabilitadas.';
-    banners.appendChild(b4);
-  } else {
-    stTxt = 'Pendiente';
-    stClass = 'tag yellow';
-  }
-  statusBadge.className = stClass;
-  statusBadge.textContent = 'Estado: ' + stTxt;
-
-  // Badge de tienda personalizada (AGREGAR ESTO)
-const storeBadge = $('#storeBadge');
-const storeActive = data.store_active || false;
-if (storeActive) {
-  storeBadge.className = 'tag green';
-  storeBadge.textContent = 'Tienda: Activa';
-} else {
-  storeBadge.className = 'tag';
-  storeBadge.textContent = 'Tienda: No activa';
-}
-
-  // Fecha de expiración (si viene)
-  if (sub.current_period_end) {
-    var b5 = document.createElement('div');
-    b5.className='muted';
-    b5.innerHTML = 'Suscripción vence: <span class="mono">' + fmtDate(sub.current_period_end) + '</span>';
-    banners.appendChild(b5);
-  }
-
-  // Actualizar card de suscripción
-  const cardSub = document.getElementById('cardSubscription');
-  if (sub.status === 'active' && sub.current_period_end) {
-    const endDate = new Date(sub.current_period_end);
-    const daysLeft = Math.ceil((endDate - Date.now()) / (1000 * 60 * 60 * 24));
-    
-    if (daysLeft > 7) {
-      cardSub.innerHTML = `
-        <h3 style="margin:0 0 8px;font-size:1.1rem">✅ Suscripción Activa</h3>
-        <p class="muted" style="margin:0 0 8px">Disfrutas de precios preferenciales hasta:</p>
-        <p style="margin:0 0 16px;font-size:1.1rem;font-weight:600;color:#86efac">${endDate.toLocaleDateString('es-ES', {day:'numeric', month:'long', year:'numeric'})}</p>
-        <button class="btn secondary" onclick="manageSubscription()" style="width:100%">Gestionar Suscripción</button>
-      `;
-    } else {
-      cardSub.innerHTML = `
-        <h3 style="margin:0 0 8px;font-size:1.1rem">⚠️ Suscripción Vence Pronto</h3>
-        <p class="muted" style="margin:0 0 8px">Tu suscripción vence en <strong>${daysLeft} días</strong>:</p>
-        <p style="margin:0 0 16px;font-size:1.1rem;font-weight:600;color:#fde68a">${endDate.toLocaleDateString('es-ES', {day:'numeric', month:'long', year:'numeric'})}</p>
-        <button class="btn primary" onclick="renewSubscription()" style="width:100%">Renovar Ahora</button>
-      `;
-    }
-  } else {
-    cardSub.innerHTML = `
-      <h3 style="margin:0 0 8px;font-size:1.1rem">🎯 Precios Preferenciales</h3>
-      <p class="muted" style="margin:0 0 16px">Activa tu suscripción y obtén hasta 30% de descuento.</p>
-      <button class="btn primary" onclick="activateSubscription()" style="width:100%">Activar Suscripción desde $9.95</button>
-    `;
-  }
-}
-
-function renderServices(rows){
-  const tb = $('#tblServices tbody');
-  tb.innerHTML = '';
-  if (!rows || rows.length === 0) {
-    const tr = document.createElement('tr');
-    const td = document.createElement('td'); td.colSpan=5; td.className='muted'; td.textContent='No hay servicios activos aún.';
-    tr.appendChild(td); tb.appendChild(tr);
-    return;
-  }
-  rows.forEach(s => {
-    const tr = document.createElement('tr');
-    const status = (s.status || '').toLowerCase();
-    const expires = s.expires_at ? new Date(s.expires_at) : null;
-    const soon = expires ? ((expires - Date.now())/(1000*3600*24) <= 3) : false;
-    var statusClass = 'status';
-    if (status === 'active') statusClass += ' active';
-    else if (status === 'expired') statusClass += ' expired';
-    else if (soon) statusClass += ' soon';
-
-    tr.innerHTML = ''
-      + '<td class="mono">' + escapeHtml(s.external_ref || s.id || '—') + '</td>'
-      + '<td>' + escapeHtml(s.product_name || s.product_code || '—') + '</td>'
-      + '<td><span class="' + statusClass + '">' + (status || (soon?'soon':'—')) + '</span></td>'
-      + '<td>' + (s.expires_at ? fmtDate(s.expires_at) : '—') + '</td>'
-      + '<td style="text-align:right">'
-      +   '<button class="btn" data-sid="' + escapeAttr(s.id) + '">Renovar</button>'
-      + '</td>';
-
-    tb.appendChild(tr);
-  });
-
-  // Attach renew handlers
-  tb.querySelectorAll('button[data-sid]').forEach(btn => {
-    btn.addEventListener('click', async ()=>{
-      const id = btn.getAttribute('data-sid');
-      btn.disabled = true; btn.textContent='Procesando…';
-      try{
-        const r = await fetch('/api/services/'+encodeURIComponent(id)+'/renew', {
-          method:'POST', credentials:'include', headers:{'Content-Type':'application/json'}
-        });
-        if (!r.ok) throw new Error();
-        const j = await r.json();
-        if (j.checkout_url) {
-          window.location.href = j.checkout_url;
-        } else {
-          toast('Renovación registrada', true);
-          await loadOverview();
-        }
-      }catch(_){
-        toast('No se pudo iniciar la renovación');
-      }finally{
-        btn.disabled = false; btn.textContent='Renovar';
+      // Suscripción
+      let subTxt = '—';
+      let subClass = 'tag';
+      if (sub.status === 'active') {
+        subTxt = 'Activa';
+        subClass = 'tag green';
+      } else if (sub.status === 'past_due') {
+        subTxt = 'Vencida';
+        subClass = 'tag yellow';
+        banners.innerHTML += '<div class="banner">Tu suscripción está <b>pendiente o vencida</b>. Renueva para mantener el precio preferencial.</div>';
+      } else if (sub.status === 'canceled') {
+        subTxt = 'Cancelada';
+        subClass = 'tag red';
+        banners.innerHTML += '<div class="banner danger">Tu suscripción está <b>cancelada</b>. Puedes reactivarla desde tu método de pago o contáctanos.</div>';
+      } else {
+        subTxt = 'Sin suscripción';
+        banners.innerHTML += '<div class="banner">No tienes una suscripción activa. Actívala para acceder a precios preferenciales.</div>';
       }
-    });
+      subBadge.className = subClass;
+      subBadge.textContent = 'Suscripción: ' + subTxt;
+
+      // Estado mayorista
+      let stTxt = '—';
+      let stClass = 'tag';
+      if (wholesaler.status === 'active' || wholesaler.status === true) {
+        stTxt = 'Activo';
+        stClass = 'tag green';
+      } else if (wholesaler.status === 'suspended' || wholesaler.status === false) {
+        stTxt = 'Suspendido';
+        stClass = 'tag red';
+        banners.innerHTML += '<div class="banner danger">Tu cuenta mayorista está <b>suspendida</b>. Las compras están deshabilitadas.</div>';
+      } else {
+        stTxt = 'Pendiente';
+        stClass = 'tag yellow';
+      }
+      statusBadge.className = stClass;
+      statusBadge.textContent = 'Estado: ' + stTxt;
+
+      // Tienda
+      const storeActive = data.store_active || false;
+      storeBadge.className = storeActive ? 'tag green' : 'tag';
+      storeBadge.textContent = 'Tienda: ' + (storeActive ? 'Activa' : 'No activa');
+
+      // Card suscripción
+      const cardSub = $('#cardSubscription');
+      if (sub.status === 'active' && sub.current_period_end) {
+        const endDate = new Date(sub.current_period_end);
+        const daysLeft = Math.ceil((endDate - Date.now()) / (1000 * 60 * 60 * 24));
+        if (daysLeft > 7) {
+          cardSub.innerHTML = `
+            <h3 style="margin:0 0 8px">✅ Suscripción Activa</h3>
+            <p class="muted" style="margin:0 0 8px">Disfrutas de precios preferenciales hasta:</p>
+            <p style="margin:0 0 16px;font-size:1.1rem;font-weight:600;color:#86efac">${endDate.toLocaleDateString('es-ES', {day:'numeric', month:'long', year:'numeric'})}</p>
+            <button class="btn secondary" onclick="manageSubscription()" style="width:100%">Gestionar Suscripción</button>
+          `;
+        } else {
+          cardSub.innerHTML = `
+            <h3 style="margin:0 0 8px">⚠️ Suscripción Vence Pronto</h3>
+            <p class="muted" style="margin:0 0 8px">Tu suscripción vence en <strong>${daysLeft} días</strong></p>
+            <button class="btn" onclick="renewSubscription()" style="width:100%">Renovar Ahora</button>
+          `;
+        }
+      } else {
+        cardSub.innerHTML = `
+          <h3 style="margin:0 0 8px">🎯 Precios Preferenciales</h3>
+          <p class="muted" style="margin:0 0 16px">Activa tu suscripción y obtén hasta 30% de descuento.</p>
+          <button class="btn" onclick="activateSubscription()" style="width:100%">Activar desde $9.95</button>
+        `;
+      }
+    }
+
+    function getServiceStatus(s){
+      const status = (s.status || '').toLowerCase();
+      const expires = s.expires_at ? new Date(s.expires_at) : null;
+      const now = Date.now();
+      const hoursLeft = expires ? (expires - now) / (1000 * 3600) : 0;
+      
+      if(status === 'canceled') return 'canceled';
+      if(status === 'expired' || (expires && expires < now)) return 'expired';
+      if(hoursLeft <= 48) return 'soon';
+      return 'active';
+    }
+
+    function renderServices(){
+      const tb = $('#tblServices tbody');
+      const search = $('#searchServices').value.toLowerCase();
+      
+      let filtered = allServices.filter(s => {
+        const matchSearch = !search || 
+          (s.external_ref||'').toLowerCase().includes(search) ||
+          (s.product_name||'').toLowerCase().includes(search) ||
+          (s.product_code||'').toLowerCase().includes(search) ||
+          (s.credential_email||'').toLowerCase().includes(search);
+        
+        const sStatus = getServiceStatus(s);
+        const matchFilter = currentFilter === 'all' || sStatus === currentFilter;
+        
+        return matchSearch && matchFilter;
+      });
+
+      // Contadores
+      const counts = {all:0,active:0,soon:0,expired:0};
+      allServices.forEach(s => {
+        const st = getServiceStatus(s);
+        counts.all++;
+        counts[st]++;
+      });
+      $('#countAll').textContent = counts.all;
+      $('#countActive').textContent = counts.active;
+      $('#countSoon').textContent = counts.soon;
+      $('#countExpired').textContent = counts.expired;
+
+      tb.innerHTML = '';
+      if (filtered.length === 0) {
+        tb.innerHTML = '<tr><td colspan="5" class="muted" style="text-align:center">No hay servicios que coincidan</td></tr>';
+        return;
+      }
+
+      filtered.forEach(s => {
+        const tr = document.createElement('tr');
+        const sStatus = getServiceStatus(s);
+        const statusClass = 'status ' + sStatus;
+        const statusText = {active:'Activo',soon:'Por vencer',expired:'Vencido',canceled:'Cancelado'}[sStatus];
+
+        tr.innerHTML = `
+          <td class="mono">${escapeHtml(s.external_ref || s.id || '—')}</td>
+          <td>
+            <div>${escapeHtml(s.product_name || s.product_code || '—')}</div>
+            ${s.credential_email ? `
+              <div class="cred-row">
+                <span class="cred-label">📧</span>
+                <span class="cred-value">${escapeHtml(s.credential_email)}</span>
+                <button class="btn small secondary" onclick="copyText('${escapeAttr(s.credential_email)}')">Copiar</button>
+              </div>
+              <div class="cred-row">
+                <span class="cred-label">🔒</span>
+                <span class="cred-value cred-hidden" id="pass-${s.id}">••••••••</span>
+                <button class="btn small secondary" onclick="togglePassword('${s.id}', '${escapeAttr(s.credential_password||'')}')">Ver</button>
+                <button class="btn small secondary" onclick="copyText('${escapeAttr(s.credential_password||'')}')">Copiar</button>
+              </div>
+            ` : '<span class="muted" style="font-size:0.85rem">Sin credenciales asignadas</span>'}
+          </td>
+          <td><span class="${statusClass}">${statusText}</span></td>
+          <td>${s.expires_at ? fmtDate(s.expires_at) : '—'}</td>
+          <td style="text-align:right">
+            ${sStatus !== 'canceled' ? `<button class="btn small" onclick="renewService('${s.id}')">Renovar</button>` : '<span class="muted">Cancelado</span>'}
+          </td>
+        `;
+        tb.appendChild(tr);
+      });
+    }
+
+    function renderOrders(){
+      const tb = $('#tblOrders tbody');
+      const now = Date.now();
+      
+      let filtered = allOrders.filter(o => {
+        if(currentPeriod === 'all') return true;
+        const orderDate = new Date(o.created_at || o.received_at);
+        const daysAgo = (now - orderDate) / (1000 * 60 * 60 * 24);
+        return daysAgo <= parseInt(currentPeriod);
+      });
+
+      tb.innerHTML = '';
+      if (filtered.length === 0) {
+        tb.innerHTML = '<tr><td colspan="5" class="muted" style="text-align:center">No hay órdenes en este período</td></tr>';
+        return;
+      }
+
+      filtered.forEach(o => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td class="mono">${escapeHtml(String(o.id||'').substring(0,8)+'...')}</td>
+          <td>${fmtDate(o.created_at || o.received_at)}</td>
+          <td>${o.currency || 'USD'} ${Number(o.total_amount || 0).toFixed(2)}</td>
+          <td><span class="status ${o.status === 'completed' ? 'active' : ''}">${escapeHtml((o.status || '').toUpperCase())}</span></td>
+          <td>${escapeHtml(o.source || '—')}</td>
+        `;
+        tb.appendChild(tr);
+      });
+    }
+
+    // Event Listeners
+    $('#searchServices').addEventListener('input', renderServices);
+
+$$('.filter-btn[data-filter]').forEach(btn => {
+  btn.addEventListener('click', e => {
+    $$('.filter-btn[data-filter]').forEach(b => b.classList.remove('active'));
+    e.target.classList.add('active');
+    currentFilter = e.target.dataset.filter;
+    renderServices();
   });
-}
-
-function renderOrders(rows){
-  const tb = $('#tblOrders tbody');
-  tb.innerHTML = '';
-  if (!rows || rows.length === 0) {
-    const tr = document.createElement('tr');
-    const td = document.createElement('td'); td.colSpan=5; td.className='muted'; td.textContent='No hay órdenes recientes.';
-    tr.appendChild(td); tb.appendChild(tr);
-    return;
-  }
-  rows.forEach(o => {
-    const tr = document.createElement('tr');
-    tr.innerHTML = ''
-      + '<td class="mono">' + escapeHtml(o.id || '—') + '</td>'
-      + '<td>' + (o.created_at ? fmtDate(o.created_at) : '—') + '</td>'
-      + '<td>' + (o.currency || 'USD') + ' ' + Number(o.total_amount || 0).toFixed(2) + '</td>'
-      + '<td>' + escapeHtml((o.status || '').toUpperCase()) + '</td>'
-      + '<td>' + escapeHtml(o.source || '—') + '</td>';
-    tb.appendChild(tr);
-  });
-}
-
-// Logout
-(function(){
-  const btn = document.getElementById('btnLogout');
-  btn.addEventListener('click', async function(){
-    try{ await fetch('/api/auth/logout', { method:'POST', credentials:'include' }); }catch(e){}
-    window.location.replace('./login.html');
-  });
-})();
-
-// Funciones de suscripción
-function activateSubscription() {
-  toast('Redirigiendo a activación de suscripción...', true);
-  // TODO: window.location.href = '/subscribe';
-}
-
-function renewSubscription() {
-  toast('Redirigiendo a renovación de suscripción...', true);
-  // TODO: window.location.href = '/renew-subscription';
-}
-
-function manageSubscription() {
-  toast('Redirigiendo a gestión de suscripción...', true);
-  // TODO: window.location.href = '/manage-subscription';
-}
-
-// Botón activar tienda
-document.getElementById('btnActivateStore').addEventListener('click', () => {
-  toast('Función próximamente disponible. Contáctanos para más información.');
 });
 
-// Variables globales para suscripción
-let selectedPlan = null;
-let selectedAmount = 0;
+$$('.filter-btn[data-period]').forEach(btn => {
+  btn.addEventListener('click', e => {
+    $$('.filter-btn[data-period]').forEach(b => b.classList.remove('active'));
+    e.target.classList.add('active');
+    currentPeriod = e.target.dataset.period;
+    renderOrders();
+      });
+    });
 
-function activateSubscription() {
-  document.getElementById('modalSubscription').style.display = 'flex';
+    function togglePassword(id, pass){
+      const el = document.getElementById('pass-'+id);
+      if(el.classList.contains('cred-hidden')){
+        el.textContent = pass;
+        el.classList.remove('cred-hidden');
+        event.target.textContent = 'Ocultar';
+      } else {
+        el.textContent = '••••••••';
+        el.classList.add('cred-hidden');
+        event.target.textContent = 'Ver';
+      }
+    }
+
+    function copyText(text){
+      navigator.clipboard.writeText(text).then(() => {
+        toast('Copiado al portapapeles', true);
+      }).catch(() => {
+        toast('Error al copiar');
+      });
+    }
+
+    let renewServiceData = null;
+
+function renewService(id) {
+  const service = allServices.find(s => s.id === id);
+  if (!service) return;
+
+  renewServiceData = service;
+  $('#renewServiceName').textContent = service.product_name || service.product_code;
+  $('#renewPrice').textContent = 'Cargando...';
+  
+  // Obtener precio desde backend
+  fetch(`/api/me/products/${service.product_code}/price`, {credentials:'include'})
+    .then(r => r.json())
+    .then(data => {
+      renewServiceData.price = data.price;
+      $('#renewPrice').textContent = `$${Number(data.price).toFixed(2)}`;
+    })
+    .catch(() => {
+      $('#renewPrice').textContent = '$9.00';
+    });
+  
+  $('#modalRenew').style.display = 'flex';
+
 }
 
-function closeSubscriptionModal() {
-  document.getElementById('modalSubscription').style.display = 'none';
-  document.getElementById('paymentMethods').style.display = 'none';
-  // Quitar selección
-  document.querySelectorAll('#modalSubscription .card').forEach(c => {
-    c.style.borderColor = 'transparent';
-  });
+function closeRenewModal() {
+  $('#modalRenew').style.display = 'none';
+  renewServiceData = null;
 }
 
-function selectPlan(plan, amount) {
+function processRenewal(method) {
+  if (!renewServiceData) return;
+  
+  toast('Procesando renovación con ' + method.toUpperCase() + '...', true);
+  
+  // TODO: Crear orden de renovación en backend
+  // TODO: Redirigir a checkout según método
+  
+  setTimeout(() => {
+    closeRenewModal();
+    toast('Función de renovación en desarrollo. Próximamente disponible.');
+  }, 1000);
+}
+
+    // Logout
+    $('#btnLogout').addEventListener('click', async () => {
+      try{ await fetch('/api/auth/logout', { method:'POST', credentials:'include' }); }catch(e){}
+      window.location.replace('./login.html');
+    });
+
+    // Suscripción
+    let selectedPlan = null;
+    let selectedAmount = 0;
+
+    function activateSubscription() {
+      $('#modalSubscription').style.display = 'flex';
+    }
+
+    function closeSubscriptionModal() {
+      $('#modalSubscription').style.display = 'none';
+      $('#paymentMethods').style.display = 'none';
+      $('#modalSubscription .card').forEach(c => c.style.borderColor = 'transparent');
+    }
+
+    function selectPlan(plan, amount) {
   selectedPlan = plan;
   selectedAmount = amount;
-  
-  // Resaltar plan seleccionado
-  document.querySelectorAll('#modalSubscription .card').forEach(c => {
-    c.style.borderColor = 'transparent';
-  });
+  $$('#modalSubscription .card').forEach(c => c.style.borderColor = 'transparent');
   event.currentTarget.style.borderColor = '#22c55e';
-  
-  // Mostrar métodos de pago
-  document.getElementById('paymentMethods').style.display = 'block';
+  $('#paymentMethods').style.display = 'block';
 }
 
-function processPayment(method) {
-  if (!selectedPlan) {
-    toast('Selecciona un plan primero');
-    return;
-  }
-  
-  // TODO: Aquí irán los links de pago reales
-  const paymentLinks = {
-    monthly: {
-      card: 'https://buy.stripe.com/dRmfZg43Ldi8bE2bdDcAo03',
-      binance: 'https://cashier-pro.coinpal.io/cashier/goods/PTL1000084631761021219',
-      paypal: 'https://paypal.com/checkout/...',
-      sinpe: '/sinpe-instructions?amount=9.95'
-    },
-    quarterly: {
-      card: 'https://buy.stripe.com/9B628qdEl6TK9vUa9zcAo06',
-      binance: 'https://cashier-pro.coinpal.io/cashier/goods/PTL1000084631761021346',
-      paypal: 'https://paypal.com/checkout/...',
-      sinpe: '/sinpe-instructions?amount=26.87'
-    },
-    semiannual: {
-      card: 'https://buy.stripe.com/4gM5kC8k1ba037wbdDcAo05',
-      binance: 'https://cashier-pro.coinpal.io/cashier/goods/PTL1000084631761021447',
-      paypal: 'https://paypal.com/checkout/...',
-      sinpe: '/sinpe-instructions?amount=47.76'
+    function processPayment(method) {
+      if (!selectedPlan) {
+        toast('Selecciona un plan primero');
+        return;
+      }
+      
+      const paymentLinks = {
+        monthly: {
+          card: 'https://buy.stripe.com/dRmfZg43Ldi8bE2bdDcAo03',
+          binance: 'https://cashier-pro.coinpal.io/cashier/goods/PTL1000084631761021219',
+          paypal: 'https://paypal.com/checkout/...',
+          sinpe: '/sinpe-instructions?amount=9.95'
+        },
+        quarterly: {
+          card: 'https://buy.stripe.com/9B628qdEl6TK9vUa9zcAo06',
+          binance: 'https://cashier-pro.coinpal.io/cashier/goods/PTL1000084631761021346',
+          paypal: 'https://paypal.com/checkout/...',
+          sinpe: '/sinpe-instructions?amount=26.87'
+        },
+        semiannual: {
+          card: 'https://buy.stripe.com/4gM5kC8k1ba037wbdDcAo05',
+          binance: 'https://cashier-pro.coinpal.io/cashier/goods/PTL1000084631761021447',
+          paypal: 'https://paypal.com/checkout/...',
+          sinpe: '/sinpe-instructions?amount=47.76'
+        }
+      };
+      
+      toast(`Redirigiendo a ${method.toUpperCase()}...`, true);
+      setTimeout(() => {
+        window.location.href = paymentLinks[selectedPlan][method];
+      }, 500);
     }
-  };
-  
-  toast(`Redirigiendo a ${method.toUpperCase()}...`, true);
-  
-  // Simular redirección (por ahora)
-  console.log(`Plan: ${selectedPlan}, Monto: $${selectedAmount}, Método: ${method}`);
-  
-  // Descomentar cuando tengas los links reales:
-  // window.location.href = paymentLinks[selectedPlan][method];
-}
-// Helpers de escape
-function escapeHtml(s){
-  if (s==null) return '';
-  return String(s).replace(/[&<>'"]/g, function(c){ return ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'})[c]; });
-}
-function escapeAttr(s){ return escapeHtml(s).replace(/"/g,'&quot;'); }
-</script>
+
+    function renewSubscription() {
+      activateSubscription();
+    }
+
+    function manageSubscription() {
+      toast('Función próximamente disponible. Contáctanos para gestionar tu suscripción.');
+    }
+
+    $('#btnActivateStore').addEventListener('click', () => {
+      toast('Función próximamente disponible. Contáctanos para más información.');
+    });
+
+    // Helpers
+    function escapeHtml(s){
+      if (s==null) return '';
+      return String(s).replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'})[c]);
+    }
+    function escapeAttr(s){ 
+      return escapeHtml(s).replace(/"/g,'&quot;').replace(/'/g,'&#39;'); 
+    }
+  </script>
 </body>
 </html>
