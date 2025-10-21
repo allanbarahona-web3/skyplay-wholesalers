@@ -63,9 +63,12 @@ export class MeController {
     const subscription = sub.rows[0] || { status: 'none', current_period_end: null };
 
     // Wholesaler status
-    const tenQ = `SELECT status FROM tenants WHERE id=$1 LIMIT 1`;
-    const ten = await this.pg.query(tenQ, [tenant_id]);
-    const wholesaler = { status: ten.rows[0]?.status || 'active' };
+    const tenQ = `SELECT name, status FROM tenants WHERE id=$1 LIMIT 1`;
+const ten = await this.pg.query(tenQ, [tenant_id]);
+const wholesaler = { 
+  name: ten.rows[0]?.name || 'Mayorista',
+  status: ten.rows[0]?.status || 'active' 
+};
 
     // Services activos
     const srvQ = `
@@ -107,6 +110,8 @@ export class MeController {
         role: user.role,
       },
       tenant_id,
+      tenant_name: wholesaler.name,  
+      store_active: false,  // ← AGREGAR ESTO (por ahora siempre false)
       branding,
       wholesaler,
       subscription,

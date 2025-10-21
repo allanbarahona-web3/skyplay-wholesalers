@@ -81,14 +81,15 @@
   <header>
     <div class="brand">
       <div class="logoBox">
-        <img src="https://dummyimage.com/44x44/2563eb/ffffff&text=S" alt="Skyplay" />
-      </div>
-      <div>
-        <h1>Panel Mayorista</h1>
-        <div class="right">
-          <span id="subBadge" class="tag">Suscripción Preferencial: —</span>
-          <span id="statusBadge" class="tag">Estado: —</span>
-        </div>
+        <img src="./White on Transparent.png" alt="Skyplay" style="object-fit:contain;padding:4px;filter:brightness(0) invert(1)"/>
+  </div>
+  <div>
+    <h1 id="tenantName">Panel Mayorista</h1>
+    <div class="right">
+  <span id="subBadge" class="tag">Suscripción: —</span>
+  <span id="storeBadge" class="tag">Tienda: —</span>
+  <span id="statusBadge" class="tag">Estado: —</span>
+</div>
       </div>
     </div>
     <div class="actions">
@@ -161,6 +162,77 @@
     </div>
   </div>
 
+  <!-- Modal de Suscripción -->
+<div class="modal" id="modalSubscription" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.8);z-index:9999;align-items:center;justify-content:center;padding:20px">
+  <div class="card" style="max-width:600px;width:100%;padding:28px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+      <h2 style="margin:0">🎯 Activar Suscripción Preferencial</h2>
+      <button class="btn secondary" onclick="closeSubscriptionModal()" style="padding:8px 12px">✕</button>
+    </div>
+
+    <p class="muted" style="margin:0 0 20px">Elige tu plan y obtén descuentos en todos los productos del catálogo.</p>
+
+    <!-- Planes -->
+    <div style="display:grid;gap:16px;margin-bottom:24px">
+      <!-- Plan Mensual -->
+      <div class="card" style="cursor:pointer;border:2px solid transparent;transition:0.2s" onclick="selectPlan('monthly', 9.95)">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <div>
+            <h3 style="margin:0 0 4px;font-size:1.1rem">Mensual</h3>
+            <p class="muted" style="margin:0">Pago mes a mes, sin compromiso</p>
+          </div>
+          <div style="text-align:right">
+            <div style="font-size:1.8rem;font-weight:800;color:#86efac">$9.95</div>
+            <div class="muted" style="font-size:0.85rem">/mes</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Plan 3 Meses (10% descuento) -->
+      <div class="card" style="cursor:pointer;border:2px solid transparent;transition:0.2s" onclick="selectPlan('quarterly', 26.87)">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <div>
+            <h3 style="margin:0 0 4px;font-size:1.1rem">3 Meses <span style="background:#22c55e;color:#000;padding:2px 6px;border-radius:4px;font-size:0.75rem;margin-left:6px">-10%</span></h3>
+            <p class="muted" style="margin:0">Ahorra $2.98 • $8.96/mes</p>
+          </div>
+          <div style="text-align:right">
+            <div style="font-size:1.8rem;font-weight:800;color:#86efac">$26.87</div>
+            <div class="muted" style="font-size:0.85rem;text-decoration:line-through">$29.85</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Plan 6 Meses (20% descuento) -->
+      <div class="card" style="cursor:pointer;border:2px solid #22c55e;transition:0.2s;position:relative" onclick="selectPlan('semiannual', 47.76)">
+        <div style="position:absolute;top:-12px;right:12px;background:#22c55e;color:#000;padding:4px 10px;border-radius:999px;font-size:0.75rem;font-weight:700">Mejor valor</div>
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <div>
+            <h3 style="margin:0 0 4px;font-size:1.1rem">6 Meses <span style="background:#22c55e;color:#000;padding:2px 6px;border-radius:4px;font-size:0.75rem;margin-left:6px">-20%</span></h3>
+            <p class="muted" style="margin:0">Ahorra $11.94 • $7.96/mes</p>
+          </div>
+          <div style="text-align:right">
+            <div style="font-size:1.8rem;font-weight:800;color:#86efac">$47.76</div>
+            <div class="muted" style="font-size:0.85rem;text-decoration:line-through">$59.70</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Métodos de pago -->
+    <div id="paymentMethods" style="display:none">
+      <h3 style="margin:0 0 12px;font-size:1rem">Selecciona método de pago:</h3>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <button class="btn" onclick="processPayment('card')" style="justify-content:center">💳 Tarjetas</button>
+        <button class="btn" onclick="processPayment('binance')" style="justify-content:center;background:#f0b90b;color:#000">Binance Pay</button>
+        <button class="btn" onclick="processPayment('paypal')" style="justify-content:center;background:#0070ba">PayPal</button>
+        <button class="btn" onclick="processPayment('sinpe')" style="justify-content:center;background:#16a34a">SINPE Móvil</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="toast" class="toast"></div>
+
   <div id="toast" class="toast"></div>
 
   <script>
@@ -221,6 +293,9 @@
   const banners = $('#banners');
   banners.innerHTML = '';
 
+  // Actualizar nombre del tenant (AGREGAR ESTO)
+  const tenantName = data.tenant_name || 'Panel Mayorista';
+  document.getElementById('tenantName').textContent = tenantName;
   // Suscripción
   var subTxt = '—';
   var subClass = 'tag';
@@ -242,7 +317,7 @@
     b2.innerHTML = 'Tu suscripción está <b>cancelada</b>. Puedes reactivarla desde tu método de pago o contáctanos.';
     banners.appendChild(b2);
   } else {
-    subTxt = 'Sin suscripción';
+    subTxt = 'Sin suscripción preferencial';
     var b3 = document.createElement('div');
     b3.className='banner';
     b3.innerHTML = 'No tienes una suscripción activa. Actívala para acceder a precios preferenciales.';
@@ -270,6 +345,17 @@
   }
   statusBadge.className = stClass;
   statusBadge.textContent = 'Estado: ' + stTxt;
+
+  // Badge de tienda personalizada (AGREGAR ESTO)
+const storeBadge = $('#storeBadge');
+const storeActive = data.store_active || false;
+if (storeActive) {
+  storeBadge.className = 'tag green';
+  storeBadge.textContent = 'Tienda: Activa';
+} else {
+  storeBadge.className = 'tag';
+  storeBadge.textContent = 'Tienda: No activa';
+}
 
   // Fecha de expiración (si viene)
   if (sub.current_period_end) {
@@ -304,7 +390,7 @@
     cardSub.innerHTML = `
       <h3 style="margin:0 0 8px;font-size:1.1rem">🎯 Precios Preferenciales</h3>
       <p class="muted" style="margin:0 0 16px">Activa tu suscripción y obtén hasta 30% de descuento.</p>
-      <button class="btn primary" onclick="activateSubscription()" style="width:100%">Activar Suscripción $9.95</button>
+      <button class="btn primary" onclick="activateSubscription()" style="width:100%">Activar Suscripción desde $9.95</button>
     `;
   }
 }
@@ -417,6 +503,73 @@ document.getElementById('btnActivateStore').addEventListener('click', () => {
   toast('Función próximamente disponible. Contáctanos para más información.');
 });
 
+// Variables globales para suscripción
+let selectedPlan = null;
+let selectedAmount = 0;
+
+function activateSubscription() {
+  document.getElementById('modalSubscription').style.display = 'flex';
+}
+
+function closeSubscriptionModal() {
+  document.getElementById('modalSubscription').style.display = 'none';
+  document.getElementById('paymentMethods').style.display = 'none';
+  // Quitar selección
+  document.querySelectorAll('#modalSubscription .card').forEach(c => {
+    c.style.borderColor = 'transparent';
+  });
+}
+
+function selectPlan(plan, amount) {
+  selectedPlan = plan;
+  selectedAmount = amount;
+  
+  // Resaltar plan seleccionado
+  document.querySelectorAll('#modalSubscription .card').forEach(c => {
+    c.style.borderColor = 'transparent';
+  });
+  event.currentTarget.style.borderColor = '#22c55e';
+  
+  // Mostrar métodos de pago
+  document.getElementById('paymentMethods').style.display = 'block';
+}
+
+function processPayment(method) {
+  if (!selectedPlan) {
+    toast('Selecciona un plan primero');
+    return;
+  }
+  
+  // TODO: Aquí irán los links de pago reales
+  const paymentLinks = {
+    monthly: {
+      card: 'https://buy.stripe.com/dRmfZg43Ldi8bE2bdDcAo03',
+      binance: 'https://cashier-pro.coinpal.io/cashier/goods/PTL1000084631761021219',
+      paypal: 'https://paypal.com/checkout/...',
+      sinpe: '/sinpe-instructions?amount=9.95'
+    },
+    quarterly: {
+      card: 'https://buy.stripe.com/9B628qdEl6TK9vUa9zcAo06',
+      binance: 'https://cashier-pro.coinpal.io/cashier/goods/PTL1000084631761021346',
+      paypal: 'https://paypal.com/checkout/...',
+      sinpe: '/sinpe-instructions?amount=26.87'
+    },
+    semiannual: {
+      card: 'https://buy.stripe.com/4gM5kC8k1ba037wbdDcAo05',
+      binance: 'https://cashier-pro.coinpal.io/cashier/goods/PTL1000084631761021447',
+      paypal: 'https://paypal.com/checkout/...',
+      sinpe: '/sinpe-instructions?amount=47.76'
+    }
+  };
+  
+  toast(`Redirigiendo a ${method.toUpperCase()}...`, true);
+  
+  // Simular redirección (por ahora)
+  console.log(`Plan: ${selectedPlan}, Monto: $${selectedAmount}, Método: ${method}`);
+  
+  // Descomentar cuando tengas los links reales:
+  // window.location.href = paymentLinks[selectedPlan][method];
+}
 // Helpers de escape
 function escapeHtml(s){
   if (s==null) return '';
