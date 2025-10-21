@@ -78,24 +78,47 @@
   <div id="auth-veil">Verificando acceso…</div>
 
   <div class="container">
-    <header>
-      <div class="brand">
-        <div class="logoBox"><img id="brandLogo" alt="Logo" /></div>
-        <div>
-          <h1>Panel Mayorista</h1>
-          <div class="right">
-            <span id="subBadge" class="tag">Suscripción: —</span>
-            <span id="statusBadge" class="tag">Estado: —</span>
-          </div>
+  <header>
+    <div class="brand">
+      <div class="logoBox">
+        <img src="https://dummyimage.com/44x44/2563eb/ffffff&text=S" alt="Skyplay" />
+      </div>
+      <div>
+        <h1>Panel Mayorista</h1>
+        <div class="right">
+          <span id="subBadge" class="tag">Suscripción Preferencial: —</span>
+          <span id="statusBadge" class="tag">Estado: —</span>
         </div>
       </div>
-      <div class="actions">
-        <a class="btn secondary" href="./index.html">Ir a la Tienda</a>
-        <button id="btnLogout" class="btn secondary">Cerrar sesión</button>
-      </div>
-    </header>
+    </div>
+    <div class="actions">
+      <a class="btn secondary" href="./index.html">Ir a la Tienda</a>
+      <button id="btnLogout" class="btn secondary">Cerrar sesión</button>
+    </div>
+  </header>
 
     <section id="banners"></section>
+
+    <section id="banners"></section>
+
+<!-- Botones de activación -->
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin:16px 0">
+  <div class="card" style="text-align:center;padding:24px" id="cardSubscription">
+  <!-- Contenido se genera dinámicamente -->
+</div>
+
+  <div class="card" style="text-align:center;padding:24px">
+    <h3 style="margin:0 0 8px;font-size:1.1rem">🛍️ Tienda Personalizada</h3>
+    <p class="muted" style="margin:0 0 16px">Vende a tus clientes con tu propia marca y dominio personalizado.</p>
+    <button class="btn" id="btnActivateStore" style="width:100%;background:#7c3aed">
+      Activar Mi Tienda
+    </button>
+    <small class="muted" style="display:block;margin-top:8px">Próximamente disponible</small>
+  </div>
+</div>
+
+<div class="grid">
+  <!-- resto del código... -->
 
     <div class="grid">
       <section class="card">
@@ -191,166 +214,215 @@
     }
 
     function renderBadgesAndBanners(data){
-      const sub = data.subscription || {};
-      const wholesaler = data.wholesaler || {};
-      const subBadge = $('#subBadge');
-      const statusBadge = $('#statusBadge');
-      const banners = $('#banners');
-      banners.innerHTML = '';
+  const sub = data.subscription || {};
+  const wholesaler = data.wholesaler || {};
+  const subBadge = $('#subBadge');
+  const statusBadge = $('#statusBadge');
+  const banners = $('#banners');
+  banners.innerHTML = '';
 
-      // Suscripción
-      var subTxt = '—';
-      var subClass = 'tag';
-      if (sub.status === 'active') {
-        subTxt = 'Activa (mejor precio)';
-        subClass = 'tag green';
-      } else if (sub.status === 'past_due') {
-        subTxt = 'Vencida / pendiente';
-        subClass = 'tag yellow';
-        var b1 = document.createElement('div');
-        b1.className='banner';
-        b1.innerHTML = 'Tu suscripción está <b>pendiente o vencida</b>. Renueva para mantener el precio preferencial.';
-        banners.appendChild(b1);
-      } else if (sub.status === 'canceled') {
-        subTxt = 'Cancelada';
-        subClass = 'tag red';
-        var b2 = document.createElement('div');
-        b2.className='banner danger';
-        b2.innerHTML = 'Tu suscripción está <b>cancelada</b>. Puedes reactivarla desde tu método de pago o contáctanos.';
-        banners.appendChild(b2);
-      } else {
-        subTxt = 'Sin suscripción';
-        var b3 = document.createElement('div');
-        b3.className='banner';
-        b3.innerHTML = 'No tienes una suscripción activa. Actívala para acceder a precios preferenciales.';
-        banners.appendChild(b3);
-      }
-      subBadge.className = subClass;
-      subBadge.textContent = 'Suscripción: ' + subTxt;
+  // Suscripción
+  var subTxt = '—';
+  var subClass = 'tag';
+  if (sub.status === 'active') {
+    subTxt = 'Activa (mejor precio)';
+    subClass = 'tag green';
+  } else if (sub.status === 'past_due') {
+    subTxt = 'Vencida / pendiente';
+    subClass = 'tag yellow';
+    var b1 = document.createElement('div');
+    b1.className='banner';
+    b1.innerHTML = 'Tu suscripción está <b>pendiente o vencida</b>. Renueva para mantener el precio preferencial.';
+    banners.appendChild(b1);
+  } else if (sub.status === 'canceled') {
+    subTxt = 'Cancelada';
+    subClass = 'tag red';
+    var b2 = document.createElement('div');
+    b2.className='banner danger';
+    b2.innerHTML = 'Tu suscripción está <b>cancelada</b>. Puedes reactivarla desde tu método de pago o contáctanos.';
+    banners.appendChild(b2);
+  } else {
+    subTxt = 'Sin suscripción';
+    var b3 = document.createElement('div');
+    b3.className='banner';
+    b3.innerHTML = 'No tienes una suscripción activa. Actívala para acceder a precios preferenciales.';
+    banners.appendChild(b3);
+  }
+  subBadge.className = subClass;
+  subBadge.textContent = 'Suscripción: ' + subTxt;
 
-      // Estado de mayorista (kill switch)
-      var stTxt = '—';
-      var stClass = 'tag';
-      if (wholesaler.status === 'active' || wholesaler.status === true) {
-        stTxt = 'Activo';
-        stClass = 'tag green';
-      } else if (wholesaler.status === 'suspended' || wholesaler.status === false) {
-        stTxt = 'Suspendido';
-        stClass = 'tag red';
-        var b4 = document.createElement('div');
-        b4.className='banner danger';
-        b4.innerHTML = 'Tu cuenta mayorista está <b>suspendida</b>. Las compras están deshabilitadas.';
-        banners.appendChild(b4);
-      } else {
-        stTxt = 'Pendiente';
-        stClass = 'tag yellow';
-      }
-      statusBadge.className = stClass;
-      statusBadge.textContent = 'Estado: ' + stTxt;
+  // Estado de mayorista (kill switch)
+  var stTxt = '—';
+  var stClass = 'tag';
+  if (wholesaler.status === 'active' || wholesaler.status === true) {
+    stTxt = 'Activo';
+    stClass = 'tag green';
+  } else if (wholesaler.status === 'suspended' || wholesaler.status === false) {
+    stTxt = 'Suspendido';
+    stClass = 'tag red';
+    var b4 = document.createElement('div');
+    b4.className='banner danger';
+    b4.innerHTML = 'Tu cuenta mayorista está <b>suspendida</b>. Las compras están deshabilitadas.';
+    banners.appendChild(b4);
+  } else {
+    stTxt = 'Pendiente';
+    stClass = 'tag yellow';
+  }
+  statusBadge.className = stClass;
+  statusBadge.textContent = 'Estado: ' + stTxt;
 
-      // Fecha de expiración (si viene)
-      if (sub.current_period_end) {
-        var b5 = document.createElement('div');
-        b5.className='muted';
-        b5.innerHTML = 'Suscripción vence: <span class="mono">' + fmtDate(sub.current_period_end) + '</span>';
-        banners.appendChild(b5);
-      }
+  // Fecha de expiración (si viene)
+  if (sub.current_period_end) {
+    var b5 = document.createElement('div');
+    b5.className='muted';
+    b5.innerHTML = 'Suscripción vence: <span class="mono">' + fmtDate(sub.current_period_end) + '</span>';
+    banners.appendChild(b5);
+  }
+
+  // Actualizar card de suscripción
+  const cardSub = document.getElementById('cardSubscription');
+  if (sub.status === 'active' && sub.current_period_end) {
+    const endDate = new Date(sub.current_period_end);
+    const daysLeft = Math.ceil((endDate - Date.now()) / (1000 * 60 * 60 * 24));
+    
+    if (daysLeft > 7) {
+      cardSub.innerHTML = `
+        <h3 style="margin:0 0 8px;font-size:1.1rem">✅ Suscripción Activa</h3>
+        <p class="muted" style="margin:0 0 8px">Disfrutas de precios preferenciales hasta:</p>
+        <p style="margin:0 0 16px;font-size:1.1rem;font-weight:600;color:#86efac">${endDate.toLocaleDateString('es-ES', {day:'numeric', month:'long', year:'numeric'})}</p>
+        <button class="btn secondary" onclick="manageSubscription()" style="width:100%">Gestionar Suscripción</button>
+      `;
+    } else {
+      cardSub.innerHTML = `
+        <h3 style="margin:0 0 8px;font-size:1.1rem">⚠️ Suscripción Vence Pronto</h3>
+        <p class="muted" style="margin:0 0 8px">Tu suscripción vence en <strong>${daysLeft} días</strong>:</p>
+        <p style="margin:0 0 16px;font-size:1.1rem;font-weight:600;color:#fde68a">${endDate.toLocaleDateString('es-ES', {day:'numeric', month:'long', year:'numeric'})}</p>
+        <button class="btn primary" onclick="renewSubscription()" style="width:100%">Renovar Ahora</button>
+      `;
     }
+  } else {
+    cardSub.innerHTML = `
+      <h3 style="margin:0 0 8px;font-size:1.1rem">🎯 Precios Preferenciales</h3>
+      <p class="muted" style="margin:0 0 16px">Activa tu suscripción y obtén hasta 30% de descuento.</p>
+      <button class="btn primary" onclick="activateSubscription()" style="width:100%">Activar Suscripción $9.95</button>
+    `;
+  }
+}
 
-    function renderServices(rows){
-      const tb = $('#tblServices tbody');
-      tb.innerHTML = '';
-      if (!rows || rows.length === 0) {
-        const tr = document.createElement('tr');
-        const td = document.createElement('td'); td.colSpan=5; td.className='muted'; td.textContent='No hay servicios activos aún.';
-        tr.appendChild(td); tb.appendChild(tr);
-        return;
-      }
-      rows.forEach(s => {
-        const tr = document.createElement('tr');
-        const status = (s.status || '').toLowerCase();
-        const expires = s.expires_at ? new Date(s.expires_at) : null;
-        const soon = expires ? ((expires - Date.now())/(1000*3600*24) <= 3) : false;
-        var statusClass = 'status';
-        if (status === 'active') statusClass += ' active';
-        else if (status === 'expired') statusClass += ' expired';
-        else if (soon) statusClass += ' soon';
+function renderServices(rows){
+  const tb = $('#tblServices tbody');
+  tb.innerHTML = '';
+  if (!rows || rows.length === 0) {
+    const tr = document.createElement('tr');
+    const td = document.createElement('td'); td.colSpan=5; td.className='muted'; td.textContent='No hay servicios activos aún.';
+    tr.appendChild(td); tb.appendChild(tr);
+    return;
+  }
+  rows.forEach(s => {
+    const tr = document.createElement('tr');
+    const status = (s.status || '').toLowerCase();
+    const expires = s.expires_at ? new Date(s.expires_at) : null;
+    const soon = expires ? ((expires - Date.now())/(1000*3600*24) <= 3) : false;
+    var statusClass = 'status';
+    if (status === 'active') statusClass += ' active';
+    else if (status === 'expired') statusClass += ' expired';
+    else if (soon) statusClass += ' soon';
 
-        tr.innerHTML = ''
-          + '<td class="mono">' + escapeHtml(s.external_ref || s.id || '—') + '</td>'
-          + '<td>' + escapeHtml(s.product_name || s.product_code || '—') + '</td>'
-          + '<td><span class="' + statusClass + '">' + (status || (soon?'soon':'—')) + '</span></td>'
-          + '<td>' + (s.expires_at ? fmtDate(s.expires_at) : '—') + '</td>'
-          + '<td style="text-align:right">'
-          +   '<button class="btn" data-sid="' + escapeAttr(s.id) + '">Renovar</button>'
-          + '</td>';
+    tr.innerHTML = ''
+      + '<td class="mono">' + escapeHtml(s.external_ref || s.id || '—') + '</td>'
+      + '<td>' + escapeHtml(s.product_name || s.product_code || '—') + '</td>'
+      + '<td><span class="' + statusClass + '">' + (status || (soon?'soon':'—')) + '</span></td>'
+      + '<td>' + (s.expires_at ? fmtDate(s.expires_at) : '—') + '</td>'
+      + '<td style="text-align:right">'
+      +   '<button class="btn" data-sid="' + escapeAttr(s.id) + '">Renovar</button>'
+      + '</td>';
 
-        tb.appendChild(tr);
-      });
+    tb.appendChild(tr);
+  });
 
-      // Attach renew handlers
-      tb.querySelectorAll('button[data-sid]').forEach(btn => {
-        btn.addEventListener('click', async ()=>{
-          const id = btn.getAttribute('data-sid');
-          btn.disabled = true; btn.textContent='Procesando…';
-          try{
-            const r = await fetch('/api/services/'+encodeURIComponent(id)+'/renew', {
-              method:'POST', credentials:'include', headers:{'Content-Type':'application/json'}
-            });
-            if (!r.ok) throw new Error();
-            const j = await r.json();
-            if (j.checkout_url) {
-              window.location.href = j.checkout_url;
-            } else {
-              toast('Renovación registrada', true);
-              // refrescar overview
-              await loadOverview();
-            }
-          }catch(_){
-            toast('No se pudo iniciar la renovación');
-          }finally{
-            btn.disabled = false; btn.textContent='Renovar';
-          }
+  // Attach renew handlers
+  tb.querySelectorAll('button[data-sid]').forEach(btn => {
+    btn.addEventListener('click', async ()=>{
+      const id = btn.getAttribute('data-sid');
+      btn.disabled = true; btn.textContent='Procesando…';
+      try{
+        const r = await fetch('/api/services/'+encodeURIComponent(id)+'/renew', {
+          method:'POST', credentials:'include', headers:{'Content-Type':'application/json'}
         });
-      });
-    }
-
-    function renderOrders(rows){
-      const tb = $('#tblOrders tbody');
-      tb.innerHTML = '';
-      if (!rows || rows.length === 0) {
-        const tr = document.createElement('tr');
-        const td = document.createElement('td'); td.colSpan=5; td.className='muted'; td.textContent='No hay órdenes recientes.';
-        tr.appendChild(td); tb.appendChild(tr);
-        return;
+        if (!r.ok) throw new Error();
+        const j = await r.json();
+        if (j.checkout_url) {
+          window.location.href = j.checkout_url;
+        } else {
+          toast('Renovación registrada', true);
+          await loadOverview();
+        }
+      }catch(_){
+        toast('No se pudo iniciar la renovación');
+      }finally{
+        btn.disabled = false; btn.textContent='Renovar';
       }
-      rows.forEach(o => {
-        const tr = document.createElement('tr');
-        tr.innerHTML = ''
-          + '<td class="mono">' + escapeHtml(o.id || '—') + '</td>'
-          + '<td>' + (o.created_at ? fmtDate(o.created_at) : '—') + '</td>'
-          + '<td>' + (o.currency || 'USD') + ' ' + Number(o.total_amount || 0).toFixed(2) + '</td>'
-          + '<td>' + escapeHtml((o.status || '').toUpperCase()) + '</td>'
-          + '<td>' + escapeHtml(o.source || '—') + '</td>';
-        tb.appendChild(tr);
-      });
-    }
+    });
+  });
+}
 
-    // Logout
-    (function(){
-      const btn = document.getElementById('btnLogout');
-      btn.addEventListener('click', async function(){
-        try{ await fetch('/api/auth/logout', { method:'POST', credentials:'include' }); }catch(e){}
-        window.location.replace('./login.html');
-      });
-    })();
+function renderOrders(rows){
+  const tb = $('#tblOrders tbody');
+  tb.innerHTML = '';
+  if (!rows || rows.length === 0) {
+    const tr = document.createElement('tr');
+    const td = document.createElement('td'); td.colSpan=5; td.className='muted'; td.textContent='No hay órdenes recientes.';
+    tr.appendChild(td); tb.appendChild(tr);
+    return;
+  }
+  rows.forEach(o => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = ''
+      + '<td class="mono">' + escapeHtml(o.id || '—') + '</td>'
+      + '<td>' + (o.created_at ? fmtDate(o.created_at) : '—') + '</td>'
+      + '<td>' + (o.currency || 'USD') + ' ' + Number(o.total_amount || 0).toFixed(2) + '</td>'
+      + '<td>' + escapeHtml((o.status || '').toUpperCase()) + '</td>'
+      + '<td>' + escapeHtml(o.source || '—') + '</td>';
+    tb.appendChild(tr);
+  });
+}
 
-    // Helpers de escape
-    function escapeHtml(s){
-      if (s==null) return '';
-      return String(s).replace(/[&<>'"]/g, function(c){ return ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'})[c]; });
-    }
-    function escapeAttr(s){ return escapeHtml(s).replace(/"/g,'&quot;'); }
-  </script>
+// Logout
+(function(){
+  const btn = document.getElementById('btnLogout');
+  btn.addEventListener('click', async function(){
+    try{ await fetch('/api/auth/logout', { method:'POST', credentials:'include' }); }catch(e){}
+    window.location.replace('./login.html');
+  });
+})();
+
+// Funciones de suscripción
+function activateSubscription() {
+  toast('Redirigiendo a activación de suscripción...', true);
+  // TODO: window.location.href = '/subscribe';
+}
+
+function renewSubscription() {
+  toast('Redirigiendo a renovación de suscripción...', true);
+  // TODO: window.location.href = '/renew-subscription';
+}
+
+function manageSubscription() {
+  toast('Redirigiendo a gestión de suscripción...', true);
+  // TODO: window.location.href = '/manage-subscription';
+}
+
+// Botón activar tienda
+document.getElementById('btnActivateStore').addEventListener('click', () => {
+  toast('Función próximamente disponible. Contáctanos para más información.');
+});
+
+// Helpers de escape
+function escapeHtml(s){
+  if (s==null) return '';
+  return String(s).replace(/[&<>'"]/g, function(c){ return ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'})[c]; });
+}
+function escapeAttr(s){ return escapeHtml(s).replace(/"/g,'&quot;'); }
+</script>
 </body>
 </html>

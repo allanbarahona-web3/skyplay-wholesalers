@@ -1,61 +1,112 @@
 // src/modules/me/me.controller.ts
-import { Controller, Get, Post, Body, Res, Req, HttpException, Inject } from '@nestjs/common';
-import { Response, Request } from 'express';
+import { Controller, Get, Req, HttpException, Inject } from '@nestjs/common';
+import { Request } from 'express';
 import { Pool } from 'pg';
 import * as jwt from 'jsonwebtoken';
 
+type JWTPayload = { id: number; tenant_id: number | null; role: string };
 
 @Controller('me')
 export class MeController {
   constructor(@Inject('PG_POOL') private readonly pg: Pool) {}
-  
-  
 
   @Get('overview')
   async overview(@Req() req: Request) {
+    // Verificar cookie JWT
     const raw = req.cookies?.[process.env.SESSION_COOKIE_NAME || 'sky_sid'];
-    if (!raw) throw new HttpException('Unauthorized', 401);
-    const { tenant_id } = jwt.verify(raw, process.env.JWT_SECRET!) as any;
-    if (!tenant_id) throw new HttpException('Unauthorized', 401);
+    if (!raw) throw new HttpException('No autorizado', 401);
 
-    // branding
+    let payload: JWTPayload;
+    try {
+      payload = jwt.verify(raw, process.env.JWT_SECRET!) as JWTPayload;
+    } catch {
+      throw new HttpException('Token inválido', 401);
+    }
+
+    const { id: userId, tenant_id, role } = payload;
+
+    // Obtener datos del usuario
+    const userQuery = `SELECT id, email, role, created_at FROM users WHERE id = $1`;
+    const { rows: userRows } = await this.pg.query(userQuery, [userId]);
+    const user = userRows[0];
+
+    if (!user) {
+      throw new HttpException('Usuario no encontrado', 404);
+    }
+
+    // Si no tiene tenant_id, retornar datos básicos
+    if (!tenant_id) {
+      return {
+        user: {
+          id: user.id,
+          email: user.email,
+          role: user.role,
+          created_at: user.created_at,
+        },
+        tenant_id: null,
+        branding: {},
+        wholesaler: { status: 'pending' },
+        subscription: { status: 'none', current_period_end: null },
+        active_services: [],
+        last_orders: [],
+      };
+    }
+
+    // Branding
     const confQ = `SELECT branding FROM tenant_configs WHERE tenant_id = $1 LIMIT 1`;
-    const conf = await (this.pg as any).query(confQ, [tenant_id]);
+    const conf = await this.pg.query(confQ, [tenant_id]);
     const branding = conf.rows[0]?.branding || {};
 
-    // subscription
+    // Subscription
     const subQ = `SELECT status, current_period_end FROM subscriptions WHERE tenant_id=$1 LIMIT 1`;
-    const sub = await (this.pg as any).query(subQ, [tenant_id]);
+    const sub = await this.pg.query(subQ, [tenant_id]);
     const subscription = sub.rows[0] || { status: 'none', current_period_end: null };
 
-    // wholesaler status (kill switch) desde tenants.status
+    // Wholesaler status
     const tenQ = `SELECT status FROM tenants WHERE id=$1 LIMIT 1`;
-    const ten = await (this.pg as any).query(tenQ, [tenant_id]);
+    const ten = await this.pg.query(tenQ, [tenant_id]);
     const wholesaler = { status: ten.rows[0]?.status || 'active' };
 
-    // services (activos o próximos a vencer)
+    // Services activos
     const srvQ = `
-      SELECT id, external_ref, product_code, status, expires_at
-      FROM services
-      WHERE tenant_id=$1
-      ORDER BY expires_at ASC
-      LIMIT 50`;
-    const services = await (this.pg as any).query(srvQ, [tenant_id]);
+      SELECT 
+        s.id, 
+        s.external_ref, 
+        s.product_code,
+        COALESCE(p.name, s.product_code) AS product_name,
+        s.status, 
+        s.expires_at
+      FROM services s
+      LEFT JOIN products p ON s.product_code = p.code
+      WHERE s.tenant_id=$1
+      ORDER BY s.expires_at ASC
+      LIMIT 50
+    `;
+    const services = await this.pg.query(srvQ, [tenant_id]);
 
-    // last orders → a partir de billing_events (si luego tienes tabla orders, la usamos)
+    // Last orders
     const ordQ = `
-      SELECT id, received_at AS created_at,
-             (payload->>'amount')::numeric AS total_amount,
-             COALESCE(payload->>'currency','USD') AS currency,
-             COALESCE(payload->>'status', event_type) AS status,
-             source
+      SELECT 
+        id, 
+        received_at AS created_at,
+        (payload->>'amount')::numeric AS total_amount,
+        COALESCE(payload->>'currency','USD') AS currency,
+        COALESCE(payload->>'status', event_type) AS status,
+        source
       FROM billing_events
       WHERE tenant_id=$1
       ORDER BY received_at DESC
-      LIMIT 10`;
-    const orders = await (this.pg as any).query(ordQ, [tenant_id]);
+      LIMIT 10
+    `;
+    const orders = await this.pg.query(ordQ, [tenant_id]);
 
     return {
+      user: {
+        id: user.id,
+        email: user.email,
+        role: user.role,
+      },
+      tenant_id,
       branding,
       wholesaler,
       subscription,

@@ -64,7 +64,7 @@
     .tile{background:linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.02)); border:1px solid rgba(255,255,255,.08); border-radius:14px; padding:16px; text-align:center}
     .tile strong{display:block; font-size:1.6rem}
 
-    footer{padding:34px 0; color:#9fb4e4; font-size:.9rem}
+    footer{padding:34px 0; color:#fcf9f8; font-size:.9rem}
 
     /* modal */
     .modal{position:fixed; inset:0; display:flex; align-items:center; justify-content:center; background:rgba(0,0,0,.6); backdrop-filter:blur(4px); visibility:hidden; opacity:0; transition:.25s}
@@ -117,34 +117,28 @@
 </script>
 
   <header class="hero container">
-    <span class="kicker">📦 Mayoristas · Catálogo Estructurado</span>
-    <h1>Planes de <span style="background:linear-gradient(90deg,var(--brand),var(--accent));-webkit-background-clip:text;background-clip:text;color:transparent">Streaming & IPTV</span></h1>
-    <p class="sub">Lista de servicios y planes disponibles para distribución mayorista. Incluye buscador, fichas, precios y pagos.</p>
+  <!-- Logo de Skyplay -->
+  <div style="text-align:center;margin-bottom:16px">
+    <img src="https://dummyimage.com/100x100/2563eb/ffffff&text=S" alt="Skyplay" style="width:60px;height:60px;border-radius:12px;border:2px solid rgba(255,255,255,0.1)"/>
+  </div>
 
-    <!-- Box para logo de la empresa -->
-    <div class="topbar">
-      <div class="logoBox">
-        <img id="logoImg" alt="Logo" src="https://dummyimage.com/160x160/0b1430/ffffff&text=LOGO"/>
-        <input id="logoUrl" class="input" type="url" placeholder="Pega URL del logo (PNG/SVG)"/>
-        <input id="logoFile" class="input" type="file" accept="image/*"/>
-        <button class="btn" id="btnSetLogo">Cargar logo</button>
-      </div>
+  <span class="kicker">📦 Mayoristas · Catálogo Estructurado</span>
+  <h1>Planes de <span style="background:linear-gradient(90deg,var(--brand),var(--accent));-webkit-background-clip:text;background-clip:text;color:transparent">Streaming & IPTV</span></h1>
+  <p class="sub">Lista de servicios y planes disponibles para distribución mayorista. Incluye buscador, fichas, precios y pagos.</p>
 
-      <div class="actions" style="justify-content:flex-end">
-  <button class="btn" onclick="window.location.href='./panel_mayorista.html'">
-    ← Volver al Panel
-  </button>
-
+  <div class="actions" style="justify-content:flex-end">
+    <button class="btn" onclick="window.location.href='./panel_mayorista.html'">
+      ← Volver al Panel
+    </button>
     <button class="btn secondary" onclick="logout()">Cerrar sesión</button>
-      </div>
-    </div>
+  </div>
 
-    <div class="toolbar container">
-      <input id="q" class="search" placeholder="Buscar servicio o plan (ej. Netflix Premium, Perfil 30, 3 dispositivos)…" />
-      <span class="tag" id="countServices">0 servicios</span>
-      <span class="tag" id="countPlans">0 planes</span>
-    </div>
-  </header>
+  <div class="toolbar container">
+    <input id="q" class="search" placeholder="Buscar servicio o plan (ej. Netflix Premium, Perfil 30, 3 dispositivos)…" />
+    <span class="tag" id="countServices">0 servicios</span>
+    <span class="tag" id="countPlans">0 planes</span>
+  </div>
+</header>
 
   <main class="container">
     <section class="list" id="list"></section>
@@ -341,15 +335,7 @@
       wallet.set(bal - selected.price); updateWalletUI(); alert(`Pago con saldo realizado: $${selected.price.toFixed(2)}`); closeModal();
     });
 
-    // Logo uploader
-    document.getElementById('btnSetLogo').addEventListener('click', ()=>{
-      const url = document.getElementById('logoUrl').value.trim();
-      const file = document.getElementById('logoFile').files[0];
-      const img = document.getElementById('logoImg');
-      if(file){ const r = new FileReader(); r.onload = e=> img.src = e.target.result; r.readAsDataURL(file); }
-      else if(url){ img.src = url; }
-    });
-
+   
     function makeRow(item){
       const row = document.createElement('div'); row.className='row';
       row.innerHTML = `
