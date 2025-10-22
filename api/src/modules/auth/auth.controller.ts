@@ -210,20 +210,49 @@ export class AuthController {
 
     switch (event.type) {
       case 'checkout.session.completed': {
-        const session = event.data.object as Stripe.Checkout.Session;
-        const tenantId = session.metadata?.tenant_id;
-        
-        if (tenantId) {
-          await this.pg.query(
-            `INSERT INTO subscriptions (tenant_id, stripe_subscription_id, status, current_period_end)
-             VALUES ($1, $2, 'active', $3)
-             ON CONFLICT (tenant_id) 
-             DO UPDATE SET status = 'active', current_period_end = $3`,
-            [tenantId, session.subscription, new Date(session.expires_at! * 1000)]
-          );
-        }
-        break;
-      }
+  const session = event.data.object as Stripe.Checkout.Session;
+  
+  // Verificar si es renovación de servicio
+  if (session.metadata?.order_type === 'renewal') {
+    const serviceId = session.metadata.service_id;
+    const orderId = session.metadata.order_id;
+    
+    await this.pg.query(
+      `UPDATE billing_events 
+       SET event_type = 'renewal_completed', 
+           payload = payload || '{"payment_status": "completed"}'::jsonb
+       WHERE id = $1`,
+      [orderId]
+    );
+    
+    await this.pg.query(
+      `UPDATE services 
+       SET expires_at = CASE 
+         WHEN expires_at > NOW() THEN expires_at + INTERVAL '30 days'
+         ELSE NOW() + INTERVAL '30 days'
+       END,
+       status = 'active'
+       WHERE id = $1`,
+      [serviceId]
+    );
+    
+    console.log(`✅ Service ${serviceId} renewed for 30 days`);
+    break;
+  }
+  
+  // Suscripción preferencial
+  const tenantId = session.metadata?.tenant_id;
+  if (tenantId) {
+    await this.pg.query(
+      `INSERT INTO subscriptions (tenant_id, stripe_subscription_id, status, current_period_end)
+       VALUES ($1, $2, 'active', $3)
+       ON CONFLICT (tenant_id) 
+       DO UPDATE SET status = 'active', current_period_end = $3`,
+      [tenantId, session.subscription, new Date(session.expires_at! * 1000)]
+    );
+  }
+  break;
+}
 
     case 'customer.subscription.updated': {
   const subscription = event.data.object as Stripe.Subscription;
