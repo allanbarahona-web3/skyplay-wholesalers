@@ -53,4 +53,55 @@ export class ServicesController {
     const { rows } = await this.pg.query(q, [tenantId, JSON.stringify(payload)]);
     return rows[0].id;
   }
+
+  @Post(':id/checkout')
+async createCheckout(@Param('id') serviceId: string, @Req() req: Request, @Res() res: Response) {
+  const raw = req.cookies?.[process.env.SESSION_COOKIE_NAME || 'sky_sid'];
+  if (!raw) throw new HttpException('Unauthorized', 401);
+  
+  const { tenant_id } = jwt.verify(raw, process.env.JWT_SECRET!) as JWTPayload;
+  if (!tenant_id) throw new HttpException('Unauthorized', 401);
+
+  // Obtener orden pendiente y precio
+  const ordQ = `SELECT be.id as order_id, be.payload, p.price, p.name as product_name
+                FROM billing_events be
+                JOIN services s ON (be.payload->>'service_id')::uuid = s.id
+                JOIN products p ON s.product_code = p.code
+                WHERE (be.payload->>'service_id')::uuid = $1 
+                AND be.tenant_id = $2 
+                AND be.event_type = 'renewal_pending'
+                ORDER BY be.received_at DESC LIMIT 1`;
+  
+  const { rows } = await this.pg.query(ordQ, [serviceId, tenant_id]);
+  const order = rows[0];
+  
+  if (!order) throw new HttpException('Order not found', 404);
+
+  // Crear Stripe Checkout
+  const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+  const session = await stripe.checkout.sessions.create({
+    line_items: [{
+      price_data: {
+        currency: 'usd',
+        product_data: { 
+          name: `Renovación: ${order.product_name}`,
+          description: 'Renovación de servicio por 30 días'
+        },
+        unit_amount: Math.round(order.price * 100)
+      },
+      quantity: 1
+    }],
+    mode: 'payment',
+    metadata: {
+      order_id: order.order_id,
+      service_id: serviceId,
+      tenant_id: tenant_id.toString(),
+      order_type: 'renewal'
+    },
+    success_url: `${process.env.FRONTEND_URL}/panel_mayorista.html?payment=success`,
+    cancel_url: `${process.env.FRONTEND_URL}/panel_mayorista.html?payment=cancel`
+  });
+
+  return res.json({ checkout_url: session.url });
+}
 }

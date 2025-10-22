@@ -621,29 +621,40 @@ function closeRenewModal() {
 async function processRenewal(method) {
   if (!renewServiceData) return;
   
-  try {
-    // Crear orden de renovación
-    const r = await fetch(`/api/services/${renewServiceData.id}/renew`, {
-      method: 'POST',
-      credentials: 'include'
-    });
-    
-    if (!r.ok) throw new Error();
-    
-    const data = await r.json();
-    
-    // TODO: Redirigir según método de pago
-    toast(`Orden creada: ${data.order_id}. Redirigiendo a ${method.toUpperCase()}...`, true);
-    
-    setTimeout(() => {
-      // Aquí irán los links de checkout
-      closeRenewModal();
-      loadOverview(); // Recargar panel
-    }, 1500);
-    
-  } catch(e) {
-    toast('Error al procesar renovación');
+  if (method === 'wallet') {
+    toast('Pago con billetera en desarrollo');
+    closeRenewModal();
+    return;
   }
+  
+  if (method === 'card') {
+    try {
+      // Obtener checkout URL de Stripe
+      const r = await fetch(`/api/services/${renewServiceData.id}/checkout`, {
+        method: 'POST',
+        credentials: 'include'
+      });
+      
+      if (!r.ok) throw new Error();
+      
+      const data = await r.json();
+      
+      toast('Redirigiendo a Stripe...', true);
+      setTimeout(() => {
+        window.location.href = data.checkout_url;
+      }, 500);
+      
+    } catch(e) {
+      console.error(e);
+      toast('Error al crear checkout');
+    }
+    return;
+  }
+  
+  // Otros métodos (Binance, Sinpe) - placeholder
+  toast(`Método ${method.toUpperCase()} en desarrollo`);
+  closeRenewModal();
+
 }
 
     // Logout
