@@ -1,6 +1,7 @@
-// src/modules/services/services.module.ts
 import { Module } from '@nestjs/common';
 import { ServicesController } from './services.controller';
 
-@Module({ controllers: [ServicesController] })
+@Module({
+  controllers: [ServicesController],
+})
 export class ServicesModule {}
