@@ -213,32 +213,37 @@ export class AuthController {
   const session = event.data.object as Stripe.Checkout.Session;
   
   // Verificar si es renovación de servicio
-  if (session.metadata?.order_type === 'renewal') {
-    const serviceId = session.metadata.service_id;
-    const orderId = session.metadata.order_id;
-    
-    await this.pg.query(
-      `UPDATE billing_events 
-       SET event_type = 'renewal_completed', 
-           payload = payload || '{"payment_status": "completed"}'::jsonb
-       WHERE id = $1`,
-      [orderId]
-    );
-    
-    await this.pg.query(
-      `UPDATE services 
-       SET expires_at = CASE 
-         WHEN expires_at > NOW() THEN expires_at + INTERVAL '30 days'
-         ELSE NOW() + INTERVAL '30 days'
-       END,
-       status = 'active'
-       WHERE id = $1`,
-      [serviceId]
-    );
-    
-    console.log(`✅ Service ${serviceId} renewed for 30 days`);
-    break;
-  }
+if (session.metadata?.order_type === 'renewal') {
+  const serviceId = session.metadata.service_id;
+  const orderId = session.metadata.order_id;
+  
+  // Actualizar orden a completada
+  await this.pg.query(
+  `UPDATE billing_events 
+   SET event_type = 'renewal_completed', 
+       payload = jsonb_set(
+         jsonb_set(payload, '{payment_status}', '"completed"'),
+         '{status}', '"completed"'
+       )
+   WHERE id = $1`,
+  [orderId]
+);
+  
+  // Extender servicio
+  await this.pg.query(
+    `UPDATE services 
+     SET expires_at = CASE 
+       WHEN expires_at > NOW() THEN expires_at + INTERVAL '30 days'
+       ELSE NOW() + INTERVAL '30 days'
+     END,
+     status = 'active'
+     WHERE id = $1`,
+    [serviceId]
+  );
+  
+  console.log(`✅ Service ${serviceId} renewed for 30 days`);
+  break;
+}
   
   // Suscripción preferencial
   const tenantId = session.metadata?.tenant_id;

@@ -13,49 +13,63 @@ export class ServicesController {
   
 
   @Post(':id/renew')
-  async renew(@Param('id') serviceId: string, @Req() req: Request, @Res() res: Response) {
-    const raw = req.cookies?.[process.env.SESSION_COOKIE_NAME || 'sky_sid'];
-    if (!raw) throw new HttpException('Unauthorized', 401);
-    
-    const { tenant_id } = jwt.verify(raw, process.env.JWT_SECRET!) as JWTPayload;
-    if (!tenant_id) throw new HttpException('Unauthorized', 401);
+async renew(@Param('id') serviceId: string, @Req() req: Request, @Res() res: Response) {
+  const raw = req.cookies?.[process.env.SESSION_COOKIE_NAME || 'sky_sid'];
+  if (!raw) throw new HttpException('Unauthorized', 401);
+  
+  const { tenant_id } = jwt.verify(raw, process.env.JWT_SECRET!) as JWTPayload;
+  if (!tenant_id) throw new HttpException('Unauthorized', 401);
 
-    // Obtener servicio
-    const srvQ = `SELECT s.*, p.price FROM services s 
-                  LEFT JOIN products p ON s.product_code = p.code 
-                  WHERE s.id = $1 AND s.tenant_id = $2`;
-    const { rows } = await this.pg.query(srvQ, [serviceId, tenant_id]);
-    const service = rows[0];
+  // Obtener servicio
+  const srvQ = `SELECT s.*, p.price FROM services s 
+                LEFT JOIN products p ON s.product_code = p.code 
+                WHERE s.id = $1 AND s.tenant_id = $2`;
+  const { rows } = await this.pg.query(srvQ, [serviceId, tenant_id]);
+  const service = rows[0];
 
-    if (!service) throw new HttpException('Service not found', 404);
+  if (!service) throw new HttpException('Service not found', 404);
 
-    // Crear orden pendiente
-    const orderId = await this.createOrder(tenant_id, service);
+  // Verificar si tiene suscripción activa
+  const subQ = `SELECT status FROM subscriptions WHERE tenant_id = $1 AND status = 'active' LIMIT 1`;
+  const { rows: subRows } = await this.pg.query(subQ, [tenant_id]);
+  const hasActiveSubscription = subRows.length > 0;
 
-    return res.json({
-      order_id: orderId,
-      service_id: serviceId,
-      amount: service.price,
-      currency: 'USD'
-    });
-  }
+  // Aplicar descuento
+  const originalPrice = parseFloat(service.price);
+  const discount = hasActiveSubscription ? 0.30 : 0;
+  const finalPrice = originalPrice * (1 - discount);
 
-  private async createOrder(tenantId: number, service: any) {
-    const q = `INSERT INTO billing_events (tenant_id, event_type, source, payload)
-               VALUES ($1, 'renewal_pending', 'MANUAL', $2) RETURNING id`;
-    const payload = {
-      service_id: service.id,
-      product_code: service.product_code,
-      amount: service.price,
-      currency: 'USD',
-      status: 'pending'
-    };
-    const { rows } = await this.pg.query(q, [tenantId, JSON.stringify(payload)]);
-    return rows[0].id;
-  }
+  // Crear orden con precio final
+  const orderId = await this.createOrder(tenant_id, service, finalPrice);
+
+  return res.json({
+    order_id: orderId,
+    service_id: serviceId,
+    amount: finalPrice,
+    original_amount: originalPrice,
+    discount_applied: discount,
+    currency: 'USD'
+  });
+}
+
+private async createOrder(tenantId: number, service: any, finalPrice: number) {
+  const q = `INSERT INTO billing_events (tenant_id, event_type, source, payload)
+             VALUES ($1, 'renewal_pending', 'MANUAL', $2) RETURNING id`;
+  const payload = {
+    service_id: service.id,
+    product_code: service.product_code,
+    amount: finalPrice,
+    original_amount: parseFloat(service.price),
+    currency: 'USD',
+    status: 'pending'
+  };
+  const { rows } = await this.pg.query(q, [tenantId, JSON.stringify(payload)]);
+  return rows[0].id;
+}
 
  @Post(':id/checkout')
 async createCheckout(@Param('id') serviceId: string, @Req() req: Request, @Res() res: Response) {
+  console.log('>>> createCheckout called for serviceId=', serviceId);
   const raw = req.cookies?.[process.env.SESSION_COOKIE_NAME || 'sky_sid'];
   if (!raw) throw new HttpException('Unauthorized', 401);
   

@@ -547,35 +547,65 @@ tb.appendChild(tr);
 }
 
     function renderOrders(){
-      const tb = $('#tblOrders tbody');
-      const now = Date.now();
-      
-      let filtered = allOrders.filter(o => {
-        if(currentPeriod === 'all') return true;
-        const orderDate = new Date(o.created_at || o.received_at);
-        const daysAgo = (now - orderDate) / (1000 * 60 * 60 * 24);
-        return daysAgo <= parseInt(currentPeriod);
-      });
+  const tb = $('#tblOrders tbody');
+  const now = Date.now();
+  
+  let filtered = allOrders.filter(o => {
+    if(currentPeriod === 'all') return true;
+    const orderDate = new Date(o.created_at || o.received_at);
+    const daysAgo = (now - orderDate) / (1000 * 60 * 60 * 24);
+    return daysAgo <= parseInt(currentPeriod);
+  });
 
-      tb.innerHTML = '';
-      if (filtered.length === 0) {
-        tb.innerHTML = '<tr><td colspan="5" class="muted" style="text-align:center">No hay órdenes en este período</td></tr>';
-        return;
-      }
+  tb.innerHTML = '';
+  if (filtered.length === 0) {
+    tb.innerHTML = '<tr><td colspan="5" class="muted" style="text-align:center">No hay órdenes en este período</td></tr>';
+    return;
+  }
 
-      filtered.forEach(o => {
-        const tr = document.createElement('tr');
-        tr.innerHTML = `
-          <td class="mono">${escapeHtml(String(o.id||'').substring(0,8)+'...')}</td>
-          <td>${fmtDate(o.created_at || o.received_at)}</td>
-          <td>${o.currency || 'USD'} ${Number(o.total_amount || 0).toFixed(2)}</td>
-          <td><span class="status ${o.status === 'completed' ? 'active' : ''}">${escapeHtml((o.status || '').toUpperCase())}</span></td>
-          <td>${escapeHtml(o.source || '—')}</td>
-        `;
-        tb.appendChild(tr);
-      });
-      
-    }
+  filtered.forEach(o => {
+    const tr = document.createElement('tr');
+    const orderId = o.order_number || String(o.id).substring(0,8);
+    
+    tr.innerHTML = `
+      <td class="mono">${escapeHtml(orderId)}</td>
+      <td>${fmtDate(o.created_at || o.received_at)}</td>
+      <td>${o.currency || 'USD'} ${Number(o.total_amount || 0).toFixed(2)}</td>
+      <td><span class="status ${o.status === 'completed' ? 'active' : ''}">${escapeHtml((o.status || '').toUpperCase())}</span></td>
+      <td style="text-align:right">
+        ${o.product_name ? `<button class="btn small secondary" onclick="toggleOrderDetails('${o.id}')">▼</button>` : '—'}
+      </td>
+    `;
+    
+    // Fila expandible
+    const expandRow = document.createElement('tr');
+    expandRow.id = `order-expand-${o.id}`;
+    expandRow.style.display = 'none';
+    expandRow.innerHTML = `
+      <td colspan="5" style="padding:12px;background:#0a0f1e">
+        <div style="display:flex;gap:24px;align-items:center">
+          <div><strong>📦</strong> ${escapeHtml(o.product_name || '—')}</div>
+          <div><strong>📧</strong> <span style="font-family:monospace">${escapeHtml(o.credential_email || '—')}</span></div>
+        </div>
+      </td>
+    `;
+    
+    tb.appendChild(tr);
+    tb.appendChild(expandRow);
+  });
+}
+function toggleOrderDetails(id) {
+  const expandRow = document.getElementById(`order-expand-${id}`);
+  const btn = event.target;
+  
+  if (expandRow.style.display === 'none') {
+    expandRow.style.display = 'table-row';
+    btn.textContent = '▲';
+  } else {
+    expandRow.style.display = 'none';
+    btn.textContent = '▼';
+  }
+}
 
     // Event Listeners
     $('#searchServices').addEventListener('input', renderServices);
@@ -675,37 +705,62 @@ function closeRenewModal() {
 
 async function processRenewal(method) {
   if (!renewServiceData) return;
-  
+
   if (method === 'wallet') {
     toast('Pago con billetera en desarrollo');
     closeRenewModal();
     return;
   }
-  
+
+  // PRIMERO crear la orden con /renew
+  try {
+    const renewRes = await fetch(`/api/services/${renewServiceData.id}/renew`, {
+      method: 'POST',
+      credentials: 'include'
+    });
+
+    if (!renewRes.ok) throw new Error('Failed to create order');
+
+    const renewData = await renewRes.json();
+    console.log('Order created:', renewData);
+  } catch(e) {
+    console.error('Error creating order:', e);
+    toast('Error al crear orden');
+    return;
+  }
+
+  // LUEGO continuar con el método de pago
   if (method === 'card') {
     try {
       // Obtener checkout URL de Stripe
-      const r = await fetch(`/api/services/${renewServiceData.id}/checkout`, {
+      console.log('Service ID:', renewServiceData.id);
+      const checkoutUrl = `${window.location.origin}/api/services/${renewServiceData.id}/checkout`;
+      console.log('POST checkout to:', checkoutUrl);
+      const r = await fetch(checkoutUrl, {
         method: 'POST',
         credentials: 'include'
       });
-      
-      if (!r.ok) throw new Error();
-      
+
+      if (!r.ok) {
+        const txt = await r.text().catch(()=>'<no-body>');
+        console.error('Checkout failed:', r.status, txt);
+        throw new Error(`HTTP ${r.status}`);
+      }
+
       const data = await r.json();
-      
+
       toast('Redirigiendo a Stripe...', true);
       setTimeout(() => {
         window.location.href = data.checkout_url;
       }, 500);
-      
+
     } catch(e) {
       console.error(e);
       toast('Error al crear checkout');
     }
     return;
   }
-  
+
   // Otros métodos (Binance, Sinpe) - placeholder
   toast(`Método ${method.toUpperCase()} en desarrollo`);
   closeRenewModal();

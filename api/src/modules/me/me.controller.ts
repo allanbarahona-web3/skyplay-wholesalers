@@ -104,19 +104,36 @@ async overview(@Req() req: Request) {
   `;
   const services = await this.pg.query(srvQ, [tenant_id]);
 
-  // Last orders (desde billing_events)
-  const ordQ = `
-    SELECT id, received_at AS created_at,
-           (payload->>'amount')::numeric AS total_amount,
-           COALESCE(payload->>'currency','USD') AS currency,
-           COALESCE(payload->>'status', event_type) AS status,
-           source
-    FROM billing_events
-    WHERE tenant_id=$1
-    ORDER BY received_at DESC
-    LIMIT 10
-  `;
-  const orders = await this.pg.query(ordQ, [tenant_id]);
+ const ordQ = `
+  SELECT 
+    be.id,
+    be.order_number,
+    be.received_at AS created_at,
+    (be.payload->>'amount')::numeric AS total_amount,
+    COALESCE(be.payload->>'currency','USD') AS currency,
+    COALESCE(
+      be.payload->>'status',
+      CASE 
+        WHEN be.event_type = 'renewal_completed' THEN 'completed'
+        WHEN be.event_type = 'payment_succeeded' THEN 'completed'
+        WHEN be.event_type = 'renewal_pending' THEN 'pending'
+        ELSE be.event_type
+      END
+    ) AS status,
+    be.source,
+    s.product_code,
+    COALESCE(p.name, s.product_code) AS product_name,
+    c.email AS credential_email
+  FROM billing_events be
+  LEFT JOIN services s ON (be.payload->>'service_id')::uuid = s.id
+  LEFT JOIN products p ON s.product_code = p.code
+  LEFT JOIN credentials c ON s.credential_id = c.id
+  WHERE be.tenant_id=$1
+  AND be.event_type IN ('renewal_completed', 'renewal_pending', 'payment_succeeded')
+  ORDER BY be.received_at DESC
+  LIMIT 10
+`;
+const orders = await this.pg.query(ordQ, [tenant_id]);
   
 
   return {
