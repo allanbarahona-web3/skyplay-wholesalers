@@ -159,14 +159,16 @@
         <div style="overflow:auto">
           <table id="tblServices">
             <thead>
-              <tr>
-                <th>Cuenta</th>
-                <th>Producto</th>
-                <th>Estado</th>
-                <th>Vence</th>
-                <th></th>
-              </tr>
-            </thead>
+  <tr>
+    <th>Cuenta</th>
+    <th>Producto</th>
+    <th>Estado</th>
+    <th>Vence</th>
+    <th>Normal</th>
+    <th>Descuento</th>
+    <th></th>
+  </tr>
+</thead>
             <tbody></tbody>
           </table>
         </div>
@@ -219,7 +221,7 @@
               <p class="muted" style="margin:0">Pago mes a mes, sin compromiso</p>
             </div>
             <div style="text-align:right">
-              <div style="font-size:1.8rem;font-weight:800;color:#86efac">$1.00</div>
+              <div style="font-size:1.8rem;font-weight:800;color:#86efac">$9.95</div>
               <div class="muted" style="font-size:0.85rem">/mes</div>
             </div>
           </div>
@@ -420,7 +422,7 @@
         cardSub.innerHTML = `
           <h3 style="margin:0 0 8px">🎯 Precios Preferenciales</h3>
           <p class="muted" style="margin:0 0 16px">Activa tu suscripción y obtén hasta 30% de descuento.</p>
-          <button class="btn" onclick="activateSubscription()" style="width:100%">Activar desde $1.00</button>
+          <button class="btn" onclick="activateSubscription()" style="width:100%">Activar desde $9.95</button>
         `;
       }
     }
@@ -438,82 +440,111 @@
     }
 
     function renderServices(){
-      const tb = $('#tblServices tbody');
-      const search = $('#searchServices').value.toLowerCase();
-      
-      let filtered = allServices.filter(s => {
-        const matchSearch = !search || 
-          (s.external_ref||'').toLowerCase().includes(search) ||
-          (s.product_name||'').toLowerCase().includes(search) ||
-          (s.product_code||'').toLowerCase().includes(search) ||
-          (s.credential_email||'').toLowerCase().includes(search);
-        
-        const sStatus = getServiceStatus(s);
-        const matchFilter = currentFilter === 'all' || sStatus === currentFilter;
-        
-        return matchSearch && matchFilter;
-      });
+  const tb = $('#tblServices tbody');
+  const search = $('#searchServices').value.toLowerCase();
+  
+  let filtered = allServices.filter(s => {
+    const matchSearch = !search || 
+      (s.external_ref||'').toLowerCase().includes(search) ||
+      (s.product_name||'').toLowerCase().includes(search) ||
+      (s.product_code||'').toLowerCase().includes(search) ||
+      (s.credential_email||'').toLowerCase().includes(search);
+    
+    const sStatus = getServiceStatus(s);
+    const matchFilter = currentFilter === 'all' || sStatus === currentFilter;
+    
+    return matchSearch && matchFilter;
+  });
 
-      // Contadores
-      const counts = {all:0,active:0,soon:0,expired:0};
-      allServices.forEach(s => {
-        const st = getServiceStatus(s);
-        counts.all++;
-        counts[st]++;
-      });
-      $('#countAll').textContent = counts.all;
-      $('#countActive').textContent = counts.active;
-      $('#countSoon').textContent = counts.soon;
-      $('#countExpired').textContent = counts.expired;
+     // Contadores
+  const counts = {all:0,active:0,soon:0,expired:0};
+  allServices.forEach(s => {
+    const st = getServiceStatus(s);
+    counts.all++;
+    counts[st]++;
+  });
+  $('#countAll').textContent = counts.all;
+  $('#countActive').textContent = counts.active;
+  $('#countSoon').textContent = counts.soon;
+  $('#countExpired').textContent = counts.expired;
 
       tb.innerHTML = '';
-      if (filtered.length === 0) {
-        tb.innerHTML = '<tr><td colspan="5" class="muted" style="text-align:center">No hay servicios que coincidan</td></tr>';
-        return;
-      }
+  if (filtered.length === 0) {
+    tb.innerHTML = '<tr><td colspan="7" class="muted" style="text-align:center">No hay servicios que coincidan</td></tr>';
+    return;
+  }
 
-      filtered.forEach(s => {
-        const tr = document.createElement('tr');
-        const sStatus = getServiceStatus(s);
-        const statusClass = 'status ' + sStatus;
-        const statusText = {active:'Activo',soon:'Por vencer',expired:'Vencido',canceled:'Cancelado'}[sStatus];
+     filtered.forEach(s => {
+    const tr = document.createElement('tr');
+    const sStatus = getServiceStatus(s);
+    const statusClass = 'status ' + sStatus;
+    const statusText = {active:'Activo',soon:'Por vencer',expired:'Vencido',canceled:'Cancelado'}[sStatus];
 
         tr.innerHTML = `
-          <td class="mono">${escapeHtml(s.external_ref || s.id || '—')}</td>
-          <td>
-            <div>${escapeHtml(s.product_name || s.product_code || '—')}</div>
-            ${s.credential_email ? `
-              <div class="cred-row">
-                <span class="cred-label">📧</span>
-                <span class="cred-value">${escapeHtml(s.credential_email)}</span>
-                <button class="btn small secondary" onclick="copyText('${escapeAttr(s.credential_email)}')">Copiar</button>
-              </div>
-              <div class="cred-row">
-                <span class="cred-label">🔒</span>
-                <span class="cred-value cred-hidden" id="pass-${s.id}">••••••••</span>
-                <button class="btn small secondary" onclick="togglePassword('${s.id}', '${escapeAttr(s.credential_password||'')}')">Ver</button>
-                <button class="btn small secondary" onclick="copyText('${escapeAttr(s.credential_password||'')}')">Copiar</button>
-              </div>
-            ` : '<span class="muted" style="font-size:0.85rem">Sin credenciales asignadas</span>'}
-          </td>
-          <td><span class="${statusClass}">${statusText}</span></td>
-          <td>${s.expires_at ? fmtDate(s.expires_at) : '—'}</td>
-          <td style="text-align:right">
-            ${sStatus !== 'canceled' ? `<button class="btn small" data-renew-id="${s.id}">Renovar</button>` : '<span class="muted">Cancelado</span>'}
-          </td>
-        `;
-        tb.appendChild(tr);
-      });
+      <td class="mono">${escapeHtml(s.external_ref || s.id.substring(0,8))}</td>
+      <td>${escapeHtml(s.product_name || s.product_code)}</td>
+      <td><span class="${statusClass}">${statusText}</span></td>
+      <td>${s.expires_at ? fmtDate(s.expires_at) : '—'}</td>
+      <td id="price-normal-${s.id}" style="font-weight:600">...</td>
+      <td id="price-discount-${s.id}" style="font-weight:600;color:#86efac">...</td>
+      <td style="text-align:right">
+        ${s.credential_email ? `<button class="btn small secondary" onclick="toggleCredentials('${s.id}')">▼</button>` : ''}
+        ${sStatus !== 'canceled' ? `<button class="btn small" data-renew-id="${s.id}">Renovar</button>` : '<span class="muted">Cancelado</span>'}
+      </td>
+    `;
+    
+    // Fila expandible para credenciales
+    const expandRow = document.createElement('tr');
+    expandRow.id = `expand-${s.id}`;
+    expandRow.style.display = 'none';
+    expandRow.innerHTML = `
+      <td colspan="7" style="padding:12px;background:#0a0f1e">
+        <div style="display:flex;gap:24px;align-items:center">
+          <div style="display:flex;align-items:center;gap:8px">
+            <span style="color:#94a3b8">📧</span>
+            <span style="font-family:monospace;font-size:0.9rem">${escapeHtml(s.credential_email||'—')}</span>
+            ${s.credential_email ? `<button class="btn small secondary" onclick="copyText('${escapeAttr(s.credential_email)}')">Copiar</button>` : ''}
+          </div>
+          <div style="display:flex;align-items:center;gap:8px">
+            <span style="color:#94a3b8">🔒</span>
+            <span style="font-family:monospace;font-size:0.9rem" id="pass-${s.id}">••••••••</span>
+            <button class="btn small secondary" onclick="togglePassword('${s.id}', '${escapeAttr(s.credential_password||'')}')">Ver</button>
+            ${s.credential_password ? `<button class="btn small secondary" onclick="copyText('${escapeAttr(s.credential_password)}')">Copiar</button>` : ''}
+          </div>
+        </div>
+      </td>
+    `;
+tb.appendChild(tr);
+    tb.appendChild(expandRow);
+  });
 
-      // Event listener para botones de renovar
-      tb.querySelectorAll('button[data-renew-id]').forEach(btn => {
-        btn.addEventListener('click', (e) => {
-          e.stopPropagation();
-          const id = btn.getAttribute('data-renew-id');
-          renewService(id);
-        });
-      });
-        }
+  // Cargar precios
+  filtered.forEach(async s => {
+    try {
+      const r = await fetch(`/api/me/products/${s.product_code}/price`, {credentials:'include'});
+      const data = await r.json();
+      const normalPrice = parseFloat(data.price);
+      const discountPrice = normalPrice * 0.8;
+      
+      const normalEl = document.getElementById(`price-normal-${s.id}`);
+      const discountEl = document.getElementById(`price-discount-${s.id}`);
+      
+      if(normalEl) normalEl.textContent = `$${normalPrice.toFixed(2)}`;
+      if(discountEl) discountEl.textContent = `$${discountPrice.toFixed(2)}`;
+    } catch(e) {
+      console.error('Error loading price:', e);
+    }
+  });
+
+// Event listener para botones de renovar
+  tb.querySelectorAll('button[data-renew-id]').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const id = btn.getAttribute('data-renew-id');
+      renewService(id);
+    });
+  });
+}
 
     function renderOrders(){
       const tb = $('#tblOrders tbody');
@@ -580,6 +611,18 @@ $$('.filter-btn[data-period]').forEach(btn => {
       }
     }
 
+    function toggleCredentials(id) {
+  const expandRow = document.getElementById(`expand-${id}`);
+  const btn = event.target;
+  
+  if (expandRow.style.display === 'none') {
+    expandRow.style.display = 'table-row';
+    btn.textContent = '▲';
+  } else {
+    expandRow.style.display = 'none';
+    btn.textContent = '▼';
+  }
+}
     function copyText(text){
       navigator.clipboard.writeText(text).then(() => {
         toast('Copiado al portapapeles', true);
@@ -598,19 +641,31 @@ function renewService(id) {
   $('#renewServiceName').textContent = service.product_name || service.product_code;
   $('#renewPrice').textContent = 'Cargando...';
   
-  // Obtener precio desde backend
-  fetch(`/api/me/products/${service.product_code}/price`, {credentials:'include'})
-    .then(r => r.json())
-    .then(data => {
-      renewServiceData.price = data.price;
-      $('#renewPrice').textContent = `$${Number(data.price).toFixed(2)}`;
-    })
-    .catch(() => {
-      $('#renewPrice').textContent = '$9.00';
-    });
+  // Obtener precio y verificar si tiene suscripción
+  Promise.all([
+    fetch(`/api/me/products/${service.product_code}/price`, {credentials:'include'}).then(r => r.json()),
+    fetch('/api/me/overview', {credentials:'include'}).then(r => r.json())
+  ]).then(([priceData, overview]) => {
+    const normalPrice = parseFloat(priceData.price);
+    const hasSubscription = overview.subscription?.status === 'active';
+    const finalPrice = hasSubscription ? normalPrice * 0.7 : normalPrice;
+    
+    renewServiceData.price = finalPrice;
+    
+    if (hasSubscription) {
+      $('#renewPrice').innerHTML = `
+        <span style="text-decoration:line-through;color:#94a3b8;font-size:0.9rem">$${normalPrice.toFixed(2)}</span>
+        <span style="color:#86efac;margin-left:8px">$${finalPrice.toFixed(2)}</span>
+        <span style="font-size:0.75rem;color:#86efac;display:block">(-30% con suscripción)</span>
+      `;
+    } else {
+      $('#renewPrice').textContent = `$${normalPrice.toFixed(2)}`;
+    }
+  }).catch(() => {
+    $('#renewPrice').textContent = '$9.00';
+  });
   
   $('#modalRenew').style.display = 'flex';
-
 }
 
 function closeRenewModal() {
@@ -685,38 +740,41 @@ async function processRenewal(method) {
   $('#paymentMethods').style.display = 'block';
 }
 
-    function processPayment(method) {
-      if (!selectedPlan) {
-        toast('Selecciona un plan primero');
-        return;
-      }
+    async function processPayment(method) {
+  if (!selectedPlan) {
+    toast('Selecciona un plan primero');
+    return;
+  }
+  
+  if (method === 'card') {
+    try {
+      const r = await fetch('/api/subscriptions/checkout', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ plan: selectedPlan })
+      });
       
-      const paymentLinks = {
-        monthly: {
-          card: 'https://buy.stripe.com/dRmfZg43Ldi8bE2bdDcAo03',
-          binance: 'https://cashier-pro.coinpal.io/cashier/goods/PTL1000084631761021219',
-          paypal: 'https://paypal.com/checkout/...',
-          sinpe: '/sinpe-instructions?amount=1.00'
-        },
-        quarterly: {
-          card: 'https://buy.stripe.com/9B628qdEl6TK9vUa9zcAo06',
-          binance: 'https://cashier-pro.coinpal.io/cashier/goods/PTL1000084631761021346',
-          paypal: 'https://paypal.com/checkout/...',
-          sinpe: '/sinpe-instructions?amount=26.87'
-        },
-        semiannual: {
-          card: 'https://buy.stripe.com/4gM5kC8k1ba037wbdDcAo05',
-          binance: 'https://cashier-pro.coinpal.io/cashier/goods/PTL1000084631761021447',
-          paypal: 'https://paypal.com/checkout/...',
-          sinpe: '/sinpe-instructions?amount=47.76'
-        }
-      };
+      if (!r.ok) throw new Error();
       
-      toast(`Redirigiendo a ${method.toUpperCase()}...`, true);
+      const data = await r.json();
+      
+      toast('Redirigiendo a Stripe...', true);
       setTimeout(() => {
-        window.location.href = paymentLinks[selectedPlan][method];
+        window.location.href = data.checkout_url;
       }, 500);
+      
+    } catch(e) {
+      console.error(e);
+      toast('Error al crear checkout');
     }
+    return;
+  }
+  
+  // Otros métodos
+  toast(`Método ${method.toUpperCase()} en desarrollo`);
+  closeSubscriptionModal();
+}
 
     function renewSubscription() {
       activateSubscription();

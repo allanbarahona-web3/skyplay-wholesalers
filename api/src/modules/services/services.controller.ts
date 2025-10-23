@@ -54,7 +54,7 @@ export class ServicesController {
     return rows[0].id;
   }
 
-  @Post(':id/checkout')
+ @Post(':id/checkout')
 async createCheckout(@Param('id') serviceId: string, @Req() req: Request, @Res() res: Response) {
   const raw = req.cookies?.[process.env.SESSION_COOKIE_NAME || 'sky_sid'];
   if (!raw) throw new HttpException('Unauthorized', 401);
@@ -77,6 +77,27 @@ async createCheckout(@Param('id') serviceId: string, @Req() req: Request, @Res()
   
   if (!order) throw new HttpException('Order not found', 404);
 
+  // Verificar si tiene suscripción activa
+  const subQ = `SELECT status FROM subscriptions WHERE tenant_id = $1 AND status = 'active' LIMIT 1`;
+  const { rows: subRows } = await this.pg.query(subQ, [tenant_id]);
+  const hasActiveSubscription = subRows.length > 0;
+
+  // Aplicar descuento del 30% si tiene suscripción
+  const discount = hasActiveSubscription ? 0.30 : 0;
+  const originalPrice = parseFloat(order.price);
+  const finalPrice = originalPrice * (1 - discount);
+
+  console.log(`Subscription active: ${hasActiveSubscription}, Original: $${originalPrice}, Final: $${finalPrice}`);
+
+  // Generar order number único
+  const orderNumber = this.generateOrderNumber();
+  
+  // Guardar order number en DB
+  await this.pg.query(
+    `UPDATE billing_events SET order_number = $1 WHERE id = $2`,
+    [orderNumber, order.order_id]
+  );
+
   // Crear Stripe Checkout
   const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
   const session = await stripe.checkout.sessions.create({
@@ -84,24 +105,37 @@ async createCheckout(@Param('id') serviceId: string, @Req() req: Request, @Res()
       price_data: {
         currency: 'usd',
         product_data: { 
-          name: `Renovación: ${order.product_name}`,
-          description: 'Renovación de servicio por 30 días'
+          name: `Orden #${orderNumber}`,
+          description: hasActiveSubscription 
+            ? 'Servicio digital - Con descuento preferencial (-30%)'
+            : 'Servicio digital - Renovación mensual'
         },
-        unit_amount: Math.round(order.price * 100)
+        unit_amount: Math.round(finalPrice * 100)
       },
       quantity: 1
     }],
     mode: 'payment',
     metadata: {
       order_id: order.order_id,
+      order_number: orderNumber,
       service_id: serviceId,
       tenant_id: tenant_id.toString(),
       order_type: 'renewal'
     },
-    success_url: `${process.env.FRONTEND_URL}/panel_mayorista.html?payment=success`,
+    success_url: `${process.env.FRONTEND_URL}/panel_mayorista.html?payment=success&order=${orderNumber}`,
     cancel_url: `${process.env.FRONTEND_URL}/panel_mayorista.html?payment=cancel`
   });
 
-  return res.json({ checkout_url: session.url });
-}
+  return res.json({ checkout_url: session.url, order_number: orderNumber });
+
+  }
+
+  private generateOrderNumber(): string {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    let result = '';
+    for (let i = 0; i < 7; i++) {
+      result += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return result;
+  }
 }
