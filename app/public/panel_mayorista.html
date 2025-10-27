@@ -311,16 +311,54 @@
 
     // Guardia de sesión
     (async () => {
-      try {
-        const me = await fetch('/api/auth/me', { credentials:'include' });
-        if (!me.ok) throw new Error('no-auth');
-        await loadOverview();
-        document.documentElement.classList.remove('auth-hide');
-        document.getElementById('auth-veil').remove();
-      } catch {
-       window.location.replace('./login.html'); 
+  try {
+    const me = await fetch('/api/auth/me', { credentials:'include' });
+    if (!me.ok) throw new Error('no-auth');
+    const meJson = await me.json();
+
+    // Carga overview (branding, suscripción, estado)
+    await loadOverview();
+// Detectar si viene de Stripe y mostrar mensaje
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('subscription') === 'success') {
+      toast('Suscripción renovada exitosamente', true);
+      // Limpiar URL sin recargar
+      window.history.replaceState({}, '', window.location.pathname);
+    } else if (urlParams.get('payment') === 'success') {
+      toast('Pago procesado exitosamente', true);
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+    // Mostrar contenido
+    document.documentElement.classList.remove('auth-hide');
+    document.getElementById('auth-veil').remove();
+  } catch {
+   window.location.replace('./login.html'); 
+  }
+})();
+
+    async function cancelSubscription(subscriptionId) {
+      if (!confirm('¿Estás seguro de que deseas cancelar tu suscripción preferencial?\n\nPerderás el 30% de descuento en todas las renovaciones.')) {
+        return;
       }
-    })();
+
+      try {
+        const r = await fetch('/api/subscriptions/cancel', {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ subscription_id: subscriptionId })
+        });
+
+        if (!r.ok) throw new Error('Error al cancelar');
+        
+        toast('Suscripción cancelada correctamente', true);
+        
+        // Recargar overview para actualizar UI
+        setTimeout(() => loadOverview(), 1500);
+      } catch (err) {
+        toast('No se pudo cancelar la suscripción');
+      }
+    }
 
     async function loadOverview(){
       try {
@@ -401,21 +439,37 @@
 
       // Card suscripción
       const cardSub = $('#cardSubscription');
-      if (sub.status === 'active' && sub.current_period_end) {
+      const now = Date.now();
+      if (sub.current_period_end) {
         const endDate = new Date(sub.current_period_end);
-        const daysLeft = Math.ceil((endDate - Date.now()) / (1000 * 60 * 60 * 24));
-        if (daysLeft > 7) {
+        const daysLeft = Math.ceil((endDate - now) / (1000 * 60 * 60 * 24));
+        if (sub.status === 'active' && daysLeft > 7) {
           cardSub.innerHTML = `
             <h3 style="margin:0 0 8px">✅ Suscripción Activa</h3>
             <p class="muted" style="margin:0 0 8px">Disfrutas de precios preferenciales hasta:</p>
             <p style="margin:0 0 16px;font-size:1.1rem;font-weight:600;color:#86efac">${endDate.toLocaleDateString('es-ES', {day:'numeric', month:'long', year:'numeric'})}</p>
-            <button class="btn secondary" onclick="manageSubscription()" style="width:100%">Gestionar Suscripción</button>
+            <button class="btn secondary" onclick="manageSubscription()" style="width:100%;margin-bottom:8px">Gestionar Suscripción</button>
+            <button class="btn secondary" onclick="cancelSubscription('${sub.stripe_subscription_id}')" style="width:100%">Cancelar Suscripción</button>
           `;
-        } else {
+        } else if (sub.status === 'active') {
           cardSub.innerHTML = `
             <h3 style="margin:0 0 8px">⚠️ Suscripción Vence Pronto</h3>
             <p class="muted" style="margin:0 0 8px">Tu suscripción vence en <strong>${daysLeft} días</strong></p>
             <button class="btn" onclick="renewSubscription()" style="width:100%">Renovar Ahora</button>
+          `;
+        } else if (sub.status === 'canceled' && endDate > now) {
+          cardSub.innerHTML = `
+            <h3 style="margin:0 0 8px">❌ Suscripción Cancelada</h3>
+            <p class="muted" style="margin:0 0 8px;color:#f87171">Tu suscripción está cancelada.</p>
+            <p class="muted" style="margin:0 0 8px">Mantendrás precios preferenciales hasta:</p>
+            <p style="margin:0 0 16px;font-size:1.1rem;font-weight:600;color:#86efac">${endDate.toLocaleDateString('es-ES', {day:'numeric', month:'long', year:'numeric'})}</p>
+            <button class="btn" onclick="activateSubscription()" style="width:100%">Reactivar Suscripción</button>
+          `;
+        } else {
+          cardSub.innerHTML = `
+            <h3 style="margin:0 0 8px">🎯 Precios Preferenciales</h3>
+            <p class="muted" style="margin:0 0 16px">Activa tu suscripción y obtén hasta 30% de descuento.</p>
+            <button class="btn" onclick="activateSubscription()" style="width:100%">Activar desde $9.95</button>
           `;
         }
       } else {
@@ -677,12 +731,19 @@ function renewService(id) {
     fetch('/api/me/overview', {credentials:'include'}).then(r => r.json())
   ]).then(([priceData, overview]) => {
     const normalPrice = parseFloat(priceData.price);
-    const hasSubscription = overview.subscription?.status === 'active';
-    const finalPrice = hasSubscription ? normalPrice * 0.7 : normalPrice;
-    
+    const sub = overview.subscription;
+    let hasPreferential = false;
+    if (sub) {
+      const now = Date.now();
+      const periodEnd = sub.current_period_end ? new Date(sub.current_period_end).getTime() : 0;
+      // Preferential price if subscription is active OR canceled but period not expired
+      if (sub.status === 'active' || (sub.status === 'canceled' && periodEnd > now)) {
+        hasPreferential = true;
+      }
+    }
+    const finalPrice = hasPreferential ? normalPrice * 0.7 : normalPrice;
     renewServiceData.price = finalPrice;
-    
-    if (hasSubscription) {
+    if (hasPreferential) {
       $('#renewPrice').innerHTML = `
         <span style="text-decoration:line-through;color:#94a3b8;font-size:0.9rem">$${normalPrice.toFixed(2)}</span>
         <span style="color:#86efac;margin-left:8px">$${finalPrice.toFixed(2)}</span>

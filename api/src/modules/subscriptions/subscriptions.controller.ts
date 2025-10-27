@@ -8,9 +8,7 @@ type JWTPayload = { id: number; tenant_id: number | null; role: string };
 
 @Controller('subscriptions')
 export class SubscriptionsController {
-  private stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-    apiVersion: '2025-09-30.clover' as any,
-  });
+  private stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
 
   constructor(@Inject('PG_POOL') private readonly pg: Pool) {}
 
@@ -74,5 +72,45 @@ export class SubscriptionsController {
     });
 
     return res.json({ checkout_url: session.url });
+  }
+  @Post('cancel')
+  async cancelSubscription(@Body() body: { subscription_id: string }, @Req() req: Request, @Res() res: Response) {
+    const raw = req.cookies?.[process.env.SESSION_COOKIE_NAME || 'sky_sid'];
+    if (!raw) throw new HttpException('Unauthorized', 401);
+    
+    const { tenant_id } = jwt.verify(raw, process.env.JWT_SECRET!) as JWTPayload;
+    if (!tenant_id) throw new HttpException('Unauthorized', 401);
+
+    const { subscription_id } = body;
+    if (!subscription_id) throw new HttpException('Subscription ID required', 400);
+
+    try {
+      // Verificar que la suscripción pertenece al tenant
+      const checkQ = `SELECT id FROM subscriptions WHERE stripe_subscription_id = $1 AND tenant_id = $2`;
+      const { rows } = await this.pg.query(checkQ, [subscription_id, tenant_id]);
+      
+      if (rows.length === 0) {
+        throw new HttpException('Subscription not found or unauthorized', 404);
+      }
+
+      // Cancelar en Stripe (al final del período actual)
+      await this.stripe.subscriptions.update(subscription_id, {
+        cancel_at_period_end: true
+      });
+
+      // Actualizar en DB
+      await this.pg.query(
+        `UPDATE subscriptions SET status = 'canceled' WHERE stripe_subscription_id = $1`,
+        [subscription_id]
+      );
+
+      return res.json({ 
+        ok: true, 
+        message: 'Suscripción cancelada. Tendrás acceso hasta el final del período actual.' 
+      });
+    } catch (err: any) {
+      console.error('Error canceling subscription:', err);
+      throw new HttpException(err.message || 'Error al cancelar suscripción', 500);
+    }
   }
 }

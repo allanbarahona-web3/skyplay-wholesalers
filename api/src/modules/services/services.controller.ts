@@ -29,12 +29,17 @@ async renew(@Param('id') serviceId: string, @Req() req: Request, @Res() res: Res
 
   if (!service) throw new HttpException('Service not found', 404);
 
-  // Verificar si tiene suscripción activa
-  const subQ = `SELECT status FROM subscriptions WHERE tenant_id = $1 AND status = 'active' LIMIT 1`;
+  // Verificar si tiene suscripción vigente (active o canceled, con fecha futura)
+  const subQ = `SELECT status, current_period_end FROM subscriptions WHERE tenant_id = $1 AND current_period_end IS NOT NULL ORDER BY current_period_end DESC LIMIT 1`;
   const { rows: subRows } = await this.pg.query(subQ, [tenant_id]);
-  const hasActiveSubscription = subRows.length > 0;
-
-  // Aplicar descuento
+  let hasActiveSubscription = false;
+  if (subRows.length > 0) {
+    const sub = subRows[0];
+    if (sub.current_period_end && new Date(sub.current_period_end) > new Date()) {
+      hasActiveSubscription = true;
+    }
+  }
+  // Aplicar descuento solo si la suscripción está vigente
   const originalPrice = parseFloat(service.price);
   const discount = hasActiveSubscription ? 0.30 : 0;
   const finalPrice = originalPrice * (1 - discount);
@@ -91,12 +96,17 @@ async createCheckout(@Param('id') serviceId: string, @Req() req: Request, @Res()
   
   if (!order) throw new HttpException('Order not found', 404);
 
-  // Verificar si tiene suscripción activa
-  const subQ = `SELECT status FROM subscriptions WHERE tenant_id = $1 AND status = 'active' LIMIT 1`;
+  // Verificar si tiene suscripción vigente (active o canceled, con fecha futura)
+  const subQ = `SELECT status, current_period_end FROM subscriptions WHERE tenant_id = $1 AND current_period_end IS NOT NULL ORDER BY current_period_end DESC LIMIT 1`;
   const { rows: subRows } = await this.pg.query(subQ, [tenant_id]);
-  const hasActiveSubscription = subRows.length > 0;
-
-  // Aplicar descuento del 30% si tiene suscripción
+  let hasActiveSubscription = false;
+  if (subRows.length > 0) {
+    const sub = subRows[0];
+    if (sub.current_period_end && new Date(sub.current_period_end) > new Date()) {
+      hasActiveSubscription = true;
+    }
+  }
+  // Aplicar descuento solo si la suscripción está vigente
   const discount = hasActiveSubscription ? 0.30 : 0;
   const originalPrice = parseFloat(order.price);
   const finalPrice = originalPrice * (1 - discount);

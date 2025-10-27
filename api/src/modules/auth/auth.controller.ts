@@ -13,9 +13,7 @@ type JWTPayload = { id: number; tenant_id: number|null; role: string };
 export class AuthController {
   constructor(@Inject('PG_POOL') private readonly pg: Pool) {}
   
-  private stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  apiVersion: '2025-09-30.acacia' as any,
-});
+  private stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
 
   @Post('login-otp')
   async login(@Body() body: any, @Res() res: Response) {
@@ -247,14 +245,41 @@ if (session.metadata?.order_type === 'renewal') {
   
   // Suscripción preferencial
   const tenantId = session.metadata?.tenant_id;
-  if (tenantId) {
-    await this.pg.query(
-      `INSERT INTO subscriptions (tenant_id, stripe_subscription_id, status, current_period_end)
-       VALUES ($1, $2, 'active', $3)
-       ON CONFLICT (tenant_id) 
-       DO UPDATE SET status = 'active', current_period_end = $3`,
-      [tenantId, session.subscription, new Date(session.expires_at! * 1000)]
-    );
+  if (tenantId && session.subscription) {
+    try {
+      // Obtener la suscripción real desde Stripe (tiene el current_period_end correcto)
+      const subscriptionResp = await this.stripe.subscriptions.retrieve(session.subscription as string);
+      console.log('🔎 Stripe subscription object:', JSON.stringify(subscriptionResp, null, 2));
+      const subscription = (subscriptionResp as any).data || subscriptionResp;
+      let periodEndDate: Date|null = null;
+      const periodEnd = subscription.items?.data?.[0]?.current_period_end;
+      if (typeof periodEnd === 'number' && periodEnd > 0 && !isNaN(periodEnd)) {
+        const d = new Date(periodEnd * 1000);
+        if (!isNaN(d.getTime())) {
+          periodEndDate = d;
+        }
+      }
+      // Solo actualizar current_period_end si la fecha es válida, si no, conservar la anterior
+      await this.pg.query(
+        `INSERT INTO subscriptions (tenant_id, stripe_subscription_id, status, current_period_end)
+         VALUES ($1, $2, $3, $4)
+         ON CONFLICT (tenant_id) 
+         DO UPDATE SET 
+           stripe_subscription_id = $2,
+           status = $3,
+           current_period_end = CASE WHEN $4 IS NOT NULL THEN $4 ELSE subscriptions.current_period_end END`,
+        [
+          tenantId,
+          subscription.id,
+          subscription.status,
+          periodEndDate
+        ]
+      );
+      console.log(`✅ Subscription ${subscription.id} for tenant ${tenantId}, expires: ${periodEndDate ? periodEndDate.toISOString() : 'undefined'}`);
+    } catch (err: any) {
+      console.error('Error retrieving/updating subscription from Stripe:', err && err.message ? err.message : err);
+      // Don't throw here — respond received:true so Stripe doesn't consider this a permanent failure.
+    }
   }
   break;
 }

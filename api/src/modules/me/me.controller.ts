@@ -70,7 +70,7 @@ async overview(@Req() req: Request) {
   const branding = conf.rows[0]?.branding || {};
 
   // Subscription
-  const subQ = `SELECT status, current_period_end FROM subscriptions WHERE tenant_id=$1 LIMIT 1`;
+  const subQ = `SELECT status, current_period_end, stripe_subscription_id FROM subscriptions WHERE tenant_id=$1 LIMIT 1`;
   const sub = await this.pg.query(subQ, [tenant_id]);
   const subscription = sub.rows[0] || { status: 'none', current_period_end: null };
 
