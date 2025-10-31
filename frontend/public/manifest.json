@@ -1,0 +1,22 @@
+{
+  "short_name": "Skyplay",
+  "name": "Skyplay Mayoristas",
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "type": "image/png",
+      "sizes": "192x192"
+    },
+    {
+      "src": "/icon-512.png",
+      "type": "image/png",
+      "sizes": "512x512"
+    }
+  ],
+  "start_url": "/",
+  "background_color": "#0f1428",
+  "display": "standalone",
+  "scope": "/",
+  "theme_color": "#2563eb",
+  "description": "Panel y catálogo mayorista de streaming y IPTV."
+}
