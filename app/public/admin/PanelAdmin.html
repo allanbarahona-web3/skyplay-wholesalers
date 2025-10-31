@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Panel Admin - Skyplay</title>
+  <style>
+    body { background: #0f1428; color: #e5e7eb; font-family: system-ui, sans-serif; padding: 32px; }
+    .container { max-width: 1200px; margin: 0 auto; }
+    h1 { font-size: 2rem; margin-bottom: 24px; }
+    nav { display: flex; gap: 16px; margin-bottom: 24px; }
+    .tab-btn { padding: 10px 18px; border-radius: 8px; background: #121a33; color: #bbf7d0; border: none; cursor: pointer; font-weight: 700; }
+    .tab-btn.active { background: #22c55e; color: #000; }
+    .section { display: none; }
+    .section.active { display: block; }
+    .card { background: #121a33; border-radius: 16px; padding: 24px; margin-bottom: 24px; box-shadow: 0 8px 32px rgba(0,0,0,.25); }
+    table { width: 100%; border-collapse: collapse; margin-top: 16px; }
+    th, td { padding: 12px; border-bottom: 1px solid #222; }
+    th { background: #1a2448; color: #bbf7d0; }
+    tr:nth-child(even) { background: #181e2a; }
+    .btn { padding: 8px 14px; border-radius: 8px; background: #22c55e; color: #000; font-weight: 700; border: none; cursor: pointer; }
+    .btn:disabled { opacity: .6; cursor: not-allowed; }
+    .tag { display: inline-block; padding: 4px 10px; border-radius: 999px; font-size: .85rem; margin-right: 6px; }
+    .tag.active { background: #22c55e; color: #000; }
+    .tag.suspended { background: #f59e0b; color: #000; }
+    .tag.canceled { background: #ef4444; color: #fff; }
+    .tag.warranty { background: #2563eb; color: #fff; }
+    .input-csv { margin-top: 12px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Panel de Administración</h1>
+    <nav>
+      <button class="tab-btn active" data-tab="dashboard">Dashboard</button>
+      <button class="tab-btn" data-tab="mayoristas">Mayoristas</button>
+      <button class="tab-btn" data-tab="inventario">Inventario</button>
+      <button class="tab-btn" data-tab="servicios">Servicios</button>
+      <button class="tab-btn" data-tab="pagos">Pagos Manuales</button>
+      <button class="tab-btn" data-tab="garantia">Garantía</button>
+      <button class="tab-btn" data-tab="logs">Logs</button>
+      <button class="tab-btn" data-tab="solicitudes">Solicitudes Mayorista</button>
+    </nav>
+
+    <!-- Dashboard -->
+    <div class="section active" id="dashboard">
+      <div class="card">
+        <h2>Resumen y Alertas</h2>
+        <ul>
+          <li>Servicios por vencer: <span id="alertVencidos">0</span></li>
+          <li>Pagos manuales pendientes: <span id="alertPagos">0</span></li>
+          <li>Reportes de garantía: <span id="alertGarantia">0</span></li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- Mayoristas -->
+    <div class="section" id="mayoristas">
+      <div class="card">
+        <h2>Gestión de Mayoristas</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Nombre</th>
+              <th>Email</th>
+              <th>Estado</th>
+              <th>Credenciales</th>
+              <th>Acciones</th>
+            </tr>
+          </thead>
+          <tbody id="mayoristasTable">
+            <!-- Aquí se cargan los mayoristas -->
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Inventario -->
+    <div class="section" id="inventario">
+      <div class="card">
+        <h2>Inventario de Credenciales</h2>
+        <input type="file" class="input-csv" id="csvUpload" accept=".csv">
+        <button class="btn" id="btnUploadCSV">Subir CSV</button>
+        <table>
+          <thead>
+            <tr>
+              <th>Producto</th>
+              <th>Credencial</th>
+              <th>Estado</th>
+              <th>Acciones</th>
+            </tr>
+          </thead>
+          <tbody id="inventarioTable">
+            <!-- Aquí se cargan las credenciales -->
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Servicios -->
+    <div class="section" id="servicios">
+      <div class="card">
+        <h2>Servicios y Suscripciones</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Mayorista</th>
+              <th>Producto</th>
+              <th>Credencial</th>
+              <th>Estado</th>
+              <th>Vence</th>
+              <th>Acciones</th>
+            </tr>
+          </thead>
+          <tbody id="serviciosTable">
+            <!-- Aquí se cargan los servicios -->
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Pagos Manuales -->
+    <div class="section" id="pagos">
+      <div class="card">
+        <h2>Pagos Manuales (SINPE, Transferencias)</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Mayorista</th>
+              <th>Método</th>
+              <th>Monto</th>
+              <th>Fecha</th>
+              <th>Acción</th>
+            </tr>
+          </thead>
+          <tbody id="pagosTable">
+            <!-- Aquí se cargan los pagos manuales -->
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Garantía -->
+    <div class="section" id="garantia">
+      <div class="card">
+        <h2>Reportes de Garantía</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Mayorista</th>
+              <th>Credencial</th>
+              <th>Motivo</th>
+              <th>Estado</th>
+              <th>Acción</th>
+            </tr>
+          </thead>
+          <tbody id="garantiaTable">
+            <!-- Aquí se cargan los reportes de garantía -->
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Logs -->
+    <div class="section" id="logs">
+      <div class="card">
+        <h2>Historial y Auditoría</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Fecha</th>
+              <th>Usuario</th>
+              <th>Acción</th>
+              <th>Detalle</th>
+            </tr>
+          </thead>
+          <tbody id="logsTable">
+            <!-- Aquí se cargan los logs -->
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Solicitudes de Mayorista -->
+    <div class="section" id="solicitudes">
+      <div class="card">
+        <h2>Solicitudes de Mayorista</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Nombre</th>
+              <th>Email</th>
+              <th>País</th>
+              <th>Teléfono</th>
+              <th>Fecha</th>
+              <th>Estado</th>
+              <th>Acción</th>
+            </tr>
+          </thead>
+          <tbody id="solicitudesTable">
+            <!-- Aquí se cargan las solicitudes -->
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  <script>
+    // Tabs
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+        document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+        btn.classList.add('active');
+        document.getElementById(btn.dataset.tab).classList.add('active');
+      });
+    });
+
+    // Dashboard counters
+    function updateDashboard({ vencidos, pagos, garantia }) {
+      document.getElementById('alertVencidos').textContent = vencidos || 0;
+      document.getElementById('alertPagos').textContent = pagos || 0;
+      document.getElementById('alertGarantia').textContent = garantia || 0;
+    }
+
+    // Cargar mayoristas
+    async function loadMayoristas() {
+      const res = await fetch('/api/admin/tenants');
+      const data = await res.json();
+      const tbody = document.getElementById('mayoristasTable');
+      tbody.innerHTML = '';
+      data.forEach(m => {
+        tbody.innerHTML += `<tr>
+          <td>${m.name || '—'}</td>
+          <td>${m.email || '—'}</td>
+          <td><span class="tag ${m.status}">${m.status || '—'}</span></td>
+          <td>${m.credentials_count || '0'}</td>
+          <td>
+            <button class="btn" onclick="approveTenant('${m.id}')">Aprobar</button>
+            <button class="btn" onclick="suspendTenant('${m.id}')">Suspender</button>
+            <button class="btn" onclick="deleteTenant('${m.id}')">Eliminar</button>
+          </td>
+        </tr>`;
+      });
+    }
+
+    // Cargar inventario
+    async function loadInventario() {
+      const res = await fetch('/api/admin/inventory');
+      const data = await res.json();
+      const tbody = document.getElementById('inventarioTable');
+      tbody.innerHTML = '';
+      data.forEach(i => {
+        tbody.innerHTML += `<tr>
+          <td>${i.product}</td>
+          <td>${i.credential}</td>
+          <td><span class="tag ${i.status}">${i.status}</span></td>
+          <td>
+            <button class="btn" onclick="editCredential('${i.id}')">Editar</button>
+            <button class="btn" onclick="deleteCredential('${i.id}')">Eliminar</button>
+          </td>
+        </tr>`;
+      });
+    }
+
+    // Cargar servicios
+    async function loadServicios() {
+      const res = await fetch('/api/admin/services');
+      const data = await res.json();
+      const tbody = document.getElementById('serviciosTable');
+      tbody.innerHTML = '';
+      data.forEach(s => {
+        tbody.innerHTML += `<tr>
+          <td>${s.tenant_name}</td>
+          <td>${s.product}</td>
+          <td>${s.credential}</td>
+          <td><span class="tag ${s.status}">${s.status}</span></td>
+          <td>${s.expires_at}</td>
+          <td>
+            <button class="btn" onclick="suspendService('${s.id}')">Suspender</button>
+            <button class="btn" onclick="deleteService('${s.id}')">Eliminar</button>
+          </td>
+        </tr>`;
+      });
+    }
+
+    // Cargar pagos manuales
+    async function loadPagos() {
+      const res = await fetch('/api/admin/payments/manual');
+      const data = await res.json();
+      const tbody = document.getElementById('pagosTable');
+      tbody.innerHTML = '';
+      data.forEach(p => {
+        tbody.innerHTML += `<tr>
+          <td>${p.tenant_name}</td>
+          <td>${p.method}</td>
+          <td>${p.amount}</td>
+          <td>${p.date}</td>
+          <td>
+            <button class="btn" onclick="approvePayment('${p.id}')">Aprobar</button>
+            <button class="btn" onclick="rejectPayment('${p.id}')">Rechazar</button>
+          </td>
+        </tr>`;
+      });
+    }
+
+    // Cargar reportes de garantía
+    async function loadGarantia() {
+      const res = await fetch('/api/admin/warranty');
+      const data = await res.json();
+      const tbody = document.getElementById('garantiaTable');
+      tbody.innerHTML = '';
+      data.forEach(g => {
+        tbody.innerHTML += `<tr>
+          <td>${g.tenant_name}</td>
+          <td>${g.credential}</td>
+          <td>${g.reason}</td>
+          <td><span class="tag warranty">${g.status}</span></td>
+          <td>
+            <button class="btn" onclick="assignReplacement('${g.id}')">Asignar reemplazo</button>
+          </td>
+        </tr>`;
+      });
+    }
+
+    // Cargar logs
+    async function loadLogs() {
+      const res = await fetch('/api/admin/logs');
+      const data = await res.json();
+      const tbody = document.getElementById('logsTable');
+      tbody.innerHTML = '';
+      data.forEach(l => {
+        tbody.innerHTML += `<tr>
+          <td>${l.date}</td>
+          <td>${l.user}</td>
+          <td>${l.action}</td>
+          <td>${l.detail}</td>
+        </tr>`;
+      });
+    }
+
+    // Cargar solicitudes de mayorista
+    const API_BASE = 'http://localhost:3000';
+    async function loadSolicitudes() {
+      const res = await fetch(`${API_BASE}/api/admin/wholesaler-requests`);
+      const data = await res.json();
+      const tbody = document.getElementById('solicitudesTable');
+      tbody.innerHTML = '';
+      data.forEach(r => {
+        tbody.innerHTML += `<tr>
+          <td>${r.name}</td>
+          <td>${r.email}</td>
+          <td>${r.country}</td>
+          <td>${r.whatsapp}</td>
+          <td>${r.created_at}</td>
+          <td><span class="tag ${r.status}">${r.status}</span></td>
+          <td>
+            <div style="display: flex; gap: 8px;">
+              <button class="btn" onclick="approveRequest('${r.id}')">Aprobar</button>
+              <button class="btn" onclick="rejectRequest('${r.id}')">Rechazar</button>
+            </div>
+          </td>
+        </tr>`;
+      });
+    }
+
+    // Inicializar panel
+    async function initPanel() {
+      loadMayoristas();
+      loadInventario();
+      loadServicios();
+      loadPagos();
+      loadGarantia();
+      loadLogs();
+      loadSolicitudes();
+      // Actualizar dashboard (ejemplo, puedes ajustar según tus endpoints)
+      updateDashboard({
+        vencidos: 3, // Debes obtener estos datos del backend
+        pagos: 2,
+        garantia: 1
+      });
+    }
+    window.onload = initPanel;
+
+    // Acciones (stubs, debes implementar los fetch POST/PUT/DELETE según tu backend)
+    window.approveTenant = id => alert('Aprobar mayorista: ' + id);
+    window.suspendTenant = id => alert('Suspender mayorista: ' + id);
+    window.deleteTenant = id => alert('Eliminar mayorista: ' + id);
+    window.editCredential = id => alert('Editar credencial: ' + id);
+    window.deleteCredential = id => alert('Eliminar credencial: ' + id);
+    window.suspendService = id => alert('Suspender servicio: ' + id);
+    window.deleteService = id => alert('Eliminar servicio: ' + id);
+    window.approvePayment = id => alert('Aprobar pago: ' + id);
+    window.rejectPayment = id => alert('Rechazar pago: ' + id);
+    window.assignReplacement = id => alert('Asignar reemplazo por garantía: ' + id);
+    window.approveRequest = async id => {
+      const approved_by = 1; // TODO: Reemplazar por el ID del admin autenticado
+      try {
+        const res = await fetch(`/api/admin/wholesaler-requests/${id}/approve`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ approved_by })
+        });
+        if (!res.ok) throw new Error(await res.text());
+        alert('Solicitud aprobada correctamente');
+        loadSolicitudes();
+      } catch (err) {
+        alert('Error al aprobar: ' + err.message);
+      }
+    };
+
+    window.rejectRequest = async id => {
+      const reason = prompt('Motivo del rechazo:');
+      if (reason === null) return;
+      try {
+        const res = await fetch(`/api/admin/wholesaler-requests/${id}/reject`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ reason })
+        });
+        if (!res.ok) throw new Error(await res.text());
+        alert('Solicitud rechazada correctamente');
+        loadSolicitudes();
+      } catch (err) {
+        alert('Error al rechazar: ' + err.message);
+      }
+    };
+  </script>
+</body>
+</html>

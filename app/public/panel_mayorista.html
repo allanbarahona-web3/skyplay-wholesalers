@@ -309,15 +309,41 @@
     let currentFilter = 'all';
     let currentPeriod = 'all';
 
-    // Guardia de sesión
+    // Función para cargar datos de ejemplo (sin backend)
+    function loadOverviewDemo() {
+      const demoData = {
+        tenant_name: 'Panel Mayorista - DEMO',
+        branding: { logo_url: './White on Transparent.png' },
+        subscription: { status: 'active', current_period_end: new Date(Date.now() + 30*24*60*60*1000).toISOString() },
+        wholesaler: { status: 'active' },
+        store_active: false,
+        active_services: [
+          { id: '1', account: 'demo@email.com', product: 'Netflix Premium', status: 'active', expires_at: new Date(Date.now() + 15*24*60*60*1000).toISOString(), normal: 9.95, discount: 8.96, credentials: { email: 'demo@netflix.com', password: 'pass1234' } },
+          { id: '2', account: 'demo2@email.com', product: 'Disney+', status: 'soon', expires_at: new Date(Date.now() + 2*24*60*60*1000).toISOString(), normal: 7.95, discount: 6.96, credentials: { email: 'demo@disney.com', password: 'pass5678' } },
+          { id: '3', account: 'demo3@email.com', product: 'HBO Max', status: 'expired', expires_at: new Date(Date.now() - 5*24*60*60*1000).toISOString(), normal: 8.95, discount: 7.96, credentials: { email: 'demo@hbo.com', password: 'pass9999' } }
+        ],
+        last_orders: [
+          { id: 'ord-001', order_number: 'ORD-001', created_at: new Date(Date.now() - 2*24*60*60*1000).toISOString(), total: 9.95, currency: 'USD', status: 'completed' },
+          { id: 'ord-002', order_number: 'ORD-002', created_at: new Date(Date.now() - 10*24*60*60*1000).toISOString(), total: 7.95, currency: 'USD', status: 'completed' }
+        ]
+      };
+      renderBadgesAndBanners(demoData);
+      allServices = demoData.active_services;
+      allOrders = demoData.last_orders;
+      renderServices();
+      renderOrders();
+    }
+
+    // Guardia de sesión - DESHABILITADA PARA TESTING
     (async () => {
   try {
-    const me = await fetch('/api/auth/me', { credentials:'include' });
-    if (!me.ok) throw new Error('no-auth');
-    const meJson = await me.json();
+    // COMENTADO: const me = await fetch('/api/auth/me', { credentials:'include' });
+    // COMENTADO: if (!me.ok) throw new Error('no-auth');
+    // COMENTADO: const meJson = await me.json();
 
-    // Carga overview (branding, suscripción, estado)
-    await loadOverview();
+    // Carga overview con datos de ejemplo
+    loadOverviewDemo();
+    
 // Detectar si viene de Stripe y mostrar mensaje
     const urlParams = new URLSearchParams(window.location.search);
     if (urlParams.get('subscription') === 'success') {
@@ -332,7 +358,10 @@
     document.documentElement.classList.remove('auth-hide');
     document.getElementById('auth-veil').remove();
   } catch {
-   window.location.replace('./login.html'); 
+   // COMENTADO: window.location.replace('./login.html'); 
+   // Mostrar contenido aunque falle
+   document.documentElement.classList.remove('auth-hide');
+   document.getElementById('auth-veil').remove();
   }
 })();
 
@@ -448,7 +477,6 @@
             <h3 style="margin:0 0 8px">✅ Suscripción Activa</h3>
             <p class="muted" style="margin:0 0 8px">Disfrutas de precios preferenciales hasta:</p>
             <p style="margin:0 0 16px;font-size:1.1rem;font-weight:600;color:#86efac">${endDate.toLocaleDateString('es-ES', {day:'numeric', month:'long', year:'numeric'})}</p>
-            <button class="btn secondary" onclick="manageSubscription()" style="width:100%;margin-bottom:8px">Gestionar Suscripción</button>
             <button class="btn secondary" onclick="cancelSubscription('${sub.stripe_subscription_id}')" style="width:100%">Cancelar Suscripción</button>
           `;
         } else if (sub.status === 'active') {
@@ -897,7 +925,7 @@ async function processRenewal(method) {
     }
 
     function manageSubscription() {
-      toast('Función próximamente disponible. Contáctanos para gestionar tu suscripción.');
+  // Eliminado: función no utilizada
     }
 
     $('#btnActivateStore').addEventListener('click', () => {

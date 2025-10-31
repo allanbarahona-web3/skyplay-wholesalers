@@ -214,26 +214,42 @@ export default function PanelMayoristaPage() {
 
   return (
     <div id="panel-mayorista">
-      <main className="container">
-        <header>
-        <div className="brand">
-          <div className="logoBox">
-            <img src="/logo.png" alt="Logo" />
+      {/* Apple-style sticky header */}
+      <header className="apple-header">
+        <div className="apple-header-content">
+          <div className="apple-header-left">
+            <img src="/White on Transparent.png" alt="Logo" className="apple-logo" />
+            <div className="apple-divider"></div>
+            <span className="apple-header-title">Panel Mayorista</span>
           </div>
-          <div>
-            <h1 id="tenantName">Panel Mayorista - DEMO</h1>
-            <div className="right">
-              <span className="tag green">Suscripción: Activa</span>
-              <span className="tag">Tienda: No activa</span>
-              <span className="tag green">Estado: Activo</span>
-            </div>
+          <div className="apple-header-right">
+            <button className="apple-btn-link" onClick={() => router.push("/")}>
+              <span>🏪</span> Tienda
+            </button>
+            <button className="apple-btn-link" onClick={() => router.push("/login")}>
+              <span>👤</span> Salir
+            </button>
           </div>
-        </div>
-        <div className="actions">
-          <a className="btn secondary" href="/">Ir a la Tienda</a>
-          <button className="btn secondary" onClick={() => router.push("/login")}>Cerrar sesión</button>
         </div>
       </header>
+
+      <main className="container" style={{ paddingTop: '80px' }}>
+
+      {/* Status badges */}
+      <div className="panel-status-bar">
+        <div className="status-badge status-active">
+          <span className="status-icon">✓</span>
+          <span>Suscripción Activa</span>
+        </div>
+        <div className="status-badge status-inactive">
+          <span className="status-icon">○</span>
+          <span>Tienda: No activa</span>
+        </div>
+        <div className="status-badge status-active">
+          <span className="status-icon">✓</span>
+          <span>Estado: Activo</span>
+        </div>
+      </div>
 
       {/* Ticker animado de anuncios */}
       <div className="ticker-container">
@@ -251,57 +267,86 @@ export default function PanelMayoristaPage() {
         </div>
       </div>
 
-      <section id="banners"></section>
-
-      {/* Botones de activación */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px", margin: "16px 0" }}>
-        <div className="card" style={{ textAlign: "center", padding: "24px" }}>
+      {/* Premium action cards */}
+      <div className="panel-action-cards">
+        <div className="action-card">
           {subscription.status === "active" ? (
             <>
-              <h3 style={{ margin: "0 0 8px", fontSize: "1.1rem" }}>✅ Suscripción Activa</h3>
-              <p className="muted" style={{ margin: "0 0 8px" }}>Disfrutas de precios preferenciales hasta:</p>
-              <p style={{ margin: "0 0 16px", fontSize: "1.1rem", color: "#86efac", fontWeight: "600" }}>
+              <div className="action-card-icon active">✓</div>
+              <h3 className="action-card-title">Suscripción Activa</h3>
+              <p className="action-card-desc">Precios preferenciales hasta:</p>
+              <p className="action-card-date">
                 {new Date(subscription.current_period_end || "").toLocaleDateString("es-ES", { day: "numeric", month: "long", year: "numeric" })}
               </p>
-              <button className="btn secondary" onClick={() => alert("Cancelar suscripción")} style={{ width: "100%" }}>Cancelar Suscripción</button>
+              <button className="btn-secondary-full" onClick={() => alert("Cancelar suscripción")}>
+                Cancelar Suscripción
+              </button>
             </>
           ) : (
             <>
-              <h3 style={{ margin: "0 0 8px", fontSize: "1.1rem" }}>🎯 Suscripción Preferencial</h3>
-              <p className="muted" style={{ margin: "0 0 16px" }}>Obtén descuentos automáticos en todos los productos del catálogo.</p>
-              <button className="btn" onClick={handleSubscription} style={{ width: "100%" }}>Activar Suscripción</button>
-              <small className="muted" style={{ display: "block", marginTop: "8px" }}>Desde $7.96/mes con plan semestral</small>
+              <div className="action-card-icon">🎯</div>
+              <h3 className="action-card-title">Suscripción Preferencial</h3>
+              <p className="action-card-desc">Obtén descuentos automáticos en todos los productos del catálogo.</p>
+              <button className="btn-primary-full" onClick={handleSubscription}>
+                Activar Suscripción
+              </button>
+              <p className="action-card-note">Desde $7.96/mes con plan semestral</p>
             </>
           )}
         </div>
-        <div className="card" style={{ textAlign: "center", padding: "24px" }}>
-          <h3 style={{ margin: "0 0 8px", fontSize: "1.1rem" }}>🛍️ Tienda Personalizada</h3>
-          <p className="muted" style={{ margin: "0 0 16px" }}>Vende a tus clientes con tu propia marca y dominio personalizado.</p>
-          <button className="btn" onClick={() => alert("Próximamente disponible")} style={{ width: "100%", background: "#7c3aed" }}>Activar Mi Tienda</button>
-          <small className="muted" style={{ display: "block", marginTop: "8px" }}>Próximamente disponible</small>
+        <div className="action-card">
+          <div className="action-card-icon purple">🛍️</div>
+          <h3 className="action-card-title">Tienda Personalizada</h3>
+          <p className="action-card-desc">Vende a tus clientes con tu propia marca y dominio personalizado.</p>
+          <button className="btn-purple-full" onClick={() => alert("Próximamente disponible")}>
+            Activar Mi Tienda
+          </button>
+          <p className="action-card-note">Próximamente disponible</p>
         </div>
       </div>
 
-      <div className="grid">
+      <div className="panel-grid">
         {/* Servicios */}
-        <section className="card">
-          <h2>Mis servicios</h2>
-          <p className="muted">Gestiona tus cuentas y credenciales activas.</p>
-          {/* Buscador */}
-          <input type="text" className="search-box" placeholder="🔍 Buscar por cuenta, producto o credencial..." value={search} onChange={handleSearchChange} />
-          {searchError && <div className="muted search-error">{searchError}</div>}
-          {/* Filtros */}
-          <div className="filters">
-            <button className={`filter-btn${filter === "all" ? " active" : ""}`} onClick={() => setFilter("all")}>Todos <span className="count">{services.length}</span></button>
-            <button className={`filter-btn${filter === "active" ? " active" : ""}`} onClick={() => setFilter("active")}>Activos <span className="count">{services.filter(s => getServiceStatus(s) === "active").length}</span></button>
-            <button className={`filter-btn${filter === "soon" ? " active" : ""}`} onClick={() => setFilter("soon")}>Por vencer <span className="count">{services.filter(s => getServiceStatus(s) === "soon").length}</span></button>
-            <button className={`filter-btn${filter === "expired" ? " active" : ""}`} onClick={() => setFilter("expired")}>Vencidos <span className="count">{services.filter(s => getServiceStatus(s) === "expired").length}</span></button>
+        <section className="panel-section">
+          <div className="section-header">
+            <div>
+              <h2 className="section-title">Mis servicios</h2>
+              <p className="section-desc">Gestiona tus cuentas y credenciales activas.</p>
+            </div>
           </div>
-          <div className="overflow-auto">
-            <table>
+          
+          {/* Buscador */}
+          <div className="search-wrapper">
+            <input 
+              type="text" 
+              className="apple-search" 
+              placeholder="Buscar por cuenta, producto o credencial..." 
+              value={search} 
+              onChange={handleSearchChange} 
+            />
+          </div>
+          {searchError && <div className="search-error-text">{searchError}</div>}
+          
+          {/* Filtros */}
+          <div className="filter-pills">
+            <button className={`pill${filter === "all" ? " active" : ""}`} onClick={() => setFilter("all")}>
+              Todos <span className="pill-count">{services.length}</span>
+            </button>
+            <button className={`pill${filter === "active" ? " active" : ""}`} onClick={() => setFilter("active")}>
+              Activos <span className="pill-count">{services.filter(s => getServiceStatus(s) === "active").length}</span>
+            </button>
+            <button className={`pill${filter === "soon" ? " active" : ""}`} onClick={() => setFilter("soon")}>
+              Por vencer <span className="pill-count">{services.filter(s => getServiceStatus(s) === "soon").length}</span>
+            </button>
+            <button className={`pill${filter === "expired" ? " active" : ""}`} onClick={() => setFilter("expired")}>
+              Vencidos <span className="pill-count">{services.filter(s => getServiceStatus(s) === "expired").length}</span>
+            </button>
+          </div>
+          <div className="table-container">
+            <table className="premium-table">
               <thead>
                 <tr>
-                  <th>Cuenta</th>
+                  <th>#</th>
                   <th>Producto</th>
                   <th>Estado</th>
                   <th>Vence</th>
@@ -316,37 +361,50 @@ export default function PanelMayoristaPage() {
                   const sStatus = getServiceStatus(s);
                   const matchFilter = filter === "all" || sStatus === filter;
                   return matchSearch && matchFilter;
-                }).map((s, index) => (
-                  <tr key={s.id}>
-                    <td>{index + 1}</td>
-                    <td>{s.product_name}</td>
-                    <td><span className={`status ${getServiceStatus(s)}`}>{getServiceStatus(s) === "active" ? "Activo" : getServiceStatus(s) === "soon" ? "Por vencer" : getServiceStatus(s) === "expired" ? "Vencido" : "Cancelado"}</span></td>
-                    <td>{fmtDate(s.expires_at)}</td>
-                    <td>--</td>
-                    <td>--</td>
-                    <td>
-                      <button className="btn small" onClick={() => handleRenew(s)}>Renovar</button>
-                    </td>
-                  </tr>
-                ))}
+                }).map((s, index) => {
+                  const status = getServiceStatus(s);
+                  return (
+                    <tr key={s.id}>
+                      <td className="td-number">{index + 1}</td>
+                      <td className="td-product">{s.product_name}</td>
+                      <td>
+                        <span className={`badge badge-${status}`}>
+                          {status === "active" ? "Activo" : status === "soon" ? "Por vencer" : status === "expired" ? "Vencido" : "Cancelado"}
+                        </span>
+                      </td>
+                      <td className="td-date">{fmtDate(s.expires_at)}</td>
+                      <td className="td-price">$9.95</td>
+                      <td className="td-price discount">$7.95</td>
+                      <td className="td-action">
+                        <button className="btn-table" onClick={() => handleRenew(s)}>Renovar</button>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
         </section>
 
         {/* Órdenes */}
-        <section className="card">
-          <h2>Mis órdenes recientes</h2>
-          <p className="muted">Historial de compras y renovaciones.</p>
-          {/* Filtros de fecha */}
-          <div className="filters">
-            <button className={`filter-btn${period === "all" ? " active" : ""}`} onClick={() => setPeriod("all")}>Todo</button>
-            <button className={`filter-btn${period === "7" ? " active" : ""}`} onClick={() => setPeriod("7")}>7 días</button>
-            <button className={`filter-btn${period === "30" ? " active" : ""}`} onClick={() => setPeriod("30")}>30 días</button>
-            <button className={`filter-btn${period === "90" ? " active" : ""}`} onClick={() => setPeriod("90")}>3 meses</button>
+        <section className="panel-section">
+          <div className="section-header">
+            <div>
+              <h2 className="section-title">Mis órdenes recientes</h2>
+              <p className="section-desc">Historial de compras y renovaciones.</p>
+            </div>
           </div>
-          <div className="overflow-auto">
-            <table>
+          
+          {/* Filtros de fecha */}
+          <div className="filter-pills">
+            <button className={`pill${period === "all" ? " active" : ""}`} onClick={() => setPeriod("all")}>Todo</button>
+            <button className={`pill${period === "7" ? " active" : ""}`} onClick={() => setPeriod("7")}>7 días</button>
+            <button className={`pill${period === "30" ? " active" : ""}`} onClick={() => setPeriod("30")}>30 días</button>
+            <button className={`pill${period === "90" ? " active" : ""}`} onClick={() => setPeriod("90")}>3 meses</button>
+          </div>
+          
+          <div className="table-container">
+            <table className="premium-table">
               <thead>
                 <tr>
                   <th>Orden</th>
@@ -365,11 +423,13 @@ export default function PanelMayoristaPage() {
                   return daysAgo <= parseInt(period);
                 }).map(o => (
                   <tr key={o.id}>
-                    <td>{o.order_number || o.id}</td>
-                    <td>{fmtDate(o.created_at || o.received_at)}</td>
-                    <td>{o.currency || "USD"} {o.total_amount?.toFixed(2)}</td>
-                    <td><span className="status active">{o.status?.toUpperCase()}</span></td>
-                    <td>—</td>
+                    <td className="td-order">{o.order_number || o.id}</td>
+                    <td className="td-date">{fmtDate(o.created_at || o.received_at)}</td>
+                    <td className="td-price">{o.currency || "USD"} {o.total_amount?.toFixed(2)}</td>
+                    <td>
+                      <span className="badge badge-active">{o.status?.toUpperCase()}</span>
+                    </td>
+                    <td className="td-muted">Catálogo</td>
                   </tr>
                 ))}
               </tbody>
