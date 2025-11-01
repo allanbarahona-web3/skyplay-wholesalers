@@ -52,9 +52,19 @@ export function PaymentProvider({ children }: { children: ReactNode }) {
   const handlePayment = async (method: string) => {
     if (!paymentData) return;
 
+    // Detectar si es un producto de créditos (recarga de billetera)
+    const isCreditProduct = paymentData.productCode.startsWith('CREDITS_');
+    
+    if (isCreditProduct) {
+      // Si es un producto de créditos, usar el flujo de recarga de billetera
+      const amount = paymentData.price;
+      await handleWalletRecharge(amount, method);
+      return;
+    }
+
     if (method === 'WALLET') {
       try {
-        // Comprar con saldo de billetera
+        // Comprar con billetera
         const result = await purchaseProduct({
           product_code: paymentData.productCode,
           quantity: 1
@@ -157,9 +167,11 @@ export function PaymentProvider({ children }: { children: ReactNode }) {
               `🎉 ¡Bono del ${bonus}%!\n\n` +
               `Pagas: $${amount}\n` +
               `Recibes: $${total.toFixed(2)}\n\n` +
-              `Serás redirigido a Stripe...`
+              `Procesaremos tu pago...`
             );
           }
+          // Cerrar modal antes de redirigir
+          closePayment();
           // Redirigir a Stripe
           window.location.href = result.data.checkout_url;
         }

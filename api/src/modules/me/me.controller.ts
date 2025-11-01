@@ -64,13 +64,14 @@ async overview(@Req() req: Request) {
   const sub = await this.pg.query(subQ, [tenant_id]);
   const subscription = sub.rows[0] || { status: 'none', current_period_end: null };
 
-  // Wholesaler status
-  const tenQ = `SELECT name, status FROM tenants WHERE id=$1 LIMIT 1`;
+  // Wholesaler status y wallet balance
+  const tenQ = `SELECT name, status, wallet_balance FROM tenants WHERE id=$1 LIMIT 1`;
   const ten = await this.pg.query(tenQ, [tenant_id]);
   const wholesaler = { 
     name: ten.rows[0]?.name || 'Mayorista',
     status: ten.rows[0]?.status || 'active' 
   };
+  const wallet_balance = parseFloat(ten.rows[0]?.wallet_balance || '0');
 
   // Services activos CON credenciales
   const srvQ = `
@@ -138,6 +139,7 @@ const orders = await this.pg.query(ordQ, [tenant_id]);
     branding,
     wholesaler,
     subscription,
+    wallet_balance,
     active_services: services.rows,
     last_orders: orders.rows,
   };

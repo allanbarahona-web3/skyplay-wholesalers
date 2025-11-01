@@ -18,6 +18,23 @@ export default function Home() {
   useEffect(() => {
     loadCatalog();
     refreshWallet();
+    
+    // Detectar retorno desde Stripe y refrescar saldo
+    const urlParams = new URLSearchParams(window.location.search);
+    const paymentStatus = urlParams.get('payment');
+    if (paymentStatus === 'success') {
+      // Dar tiempo al webhook para procesar
+      setTimeout(() => {
+        refreshWallet();
+        // Mostrar mensaje de éxito
+        const orderType = urlParams.get('type');
+        if (orderType === 'recharge') {
+          alert('✅ ¡Recarga exitosa! Tu saldo ha sido actualizado.');
+        }
+        // Limpiar URL
+        window.history.replaceState({}, '', window.location.pathname);
+      }, 2000);
+    }
   }, []);
 
   const loadCatalog = async () => {

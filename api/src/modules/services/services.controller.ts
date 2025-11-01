@@ -38,6 +38,11 @@ export class ServicesController {
       throw new HttpException('product_code is required', 400);
     }
 
+    // Validar que NO sea un producto de créditos (esos usan /wallet/recharge)
+    if (product_code.startsWith('CREDITS_')) {
+      throw new HttpException('Credit products must use /wallet/recharge endpoint', 400);
+    }
+
     const client = await this.pg.connect();
     try {
       await client.query('BEGIN');
@@ -187,6 +192,11 @@ export class ServicesController {
 
     if (!product_code) {
       throw new HttpException('product_code is required', 400);
+    }
+
+    // Validar que NO sea un producto de créditos (esos usan /wallet/recharge)
+    if (product_code.startsWith('CREDITS_')) {
+      throw new HttpException('Credit products must use /wallet/recharge endpoint', 400);
     }
 
     try {
