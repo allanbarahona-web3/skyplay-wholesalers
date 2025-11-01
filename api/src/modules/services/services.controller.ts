@@ -319,6 +319,107 @@ export class ServicesController {
     }
   }
 
+  // Endpoint para crear orden SINPE para compra de producto del catálogo
+  @Post('checkout/sinpe')
+  @UseGuards(AuthGuard)
+  async createSinpeProductCheckout(
+    @Body() body: { product_code: string; quantity?: number },
+    @Req() req: Request,
+    @Res() res: Response
+  ) {
+    const { tenant_id } = (req as any).user as JWTPayload;
+    const { product_code, quantity = 1 } = body;
+
+    if (!product_code) {
+      throw new HttpException('product_code is required', 400);
+    }
+
+    // Validar que NO sea un producto de créditos
+    if (product_code.startsWith('CREDITS_')) {
+      throw new HttpException('Credit products must use /wallet/recharge endpoint', 400);
+    }
+
+    try {
+      // 1. Verificar que el producto existe
+      const productResult = await this.pg.query(
+        `SELECT code, name, category, price, stock FROM products WHERE code = $1`,
+        [product_code]
+      );
+
+      if (productResult.rows.length === 0) {
+        throw new HttpException('Product not found', 404);
+      }
+
+      const product = productResult.rows[0];
+
+      if (product.stock < quantity) {
+        throw new HttpException(`Insufficient stock. Available: ${product.stock}`, 400);
+      }
+
+      // 2. Verificar suscripción para descuento
+      const subResult = await this.pg.query(
+        `SELECT status FROM subscriptions 
+         WHERE tenant_id = $1 AND current_period_end > NOW() 
+         ORDER BY current_period_end DESC LIMIT 1`,
+        [tenant_id]
+      );
+
+      const hasActiveSubscription = subResult.rows.length > 0;
+      const discount = hasActiveSubscription ? 0.30 : 0;
+      const unitPrice = parseFloat(product.price);
+      const totalPrice = unitPrice * quantity * (1 - discount);
+
+      // 3. Generar order number
+      const orderNumber = this.generateOrderNumber();
+
+      // 4. Crear registro pendiente
+      const eventResult = await this.pg.query(
+        `INSERT INTO billing_events (tenant_id, event_type, source, order_number, payload)
+         VALUES ($1, 'purchase_pending', 'SINPE', $2, $3)
+         RETURNING id`,
+        [
+          tenant_id,
+          orderNumber,
+          JSON.stringify({
+            product_code,
+            product_name: product.name,
+            quantity,
+            unit_price: unitPrice,
+            total_price: totalPrice,
+            discount_applied: discount,
+            status: 'pending'
+          })
+        ]
+      );
+
+      const orderId = eventResult.rows[0].id;
+
+      // 5. Devolver instrucciones SINPE
+      return res.json({
+        order_id: orderId,
+        order_number: orderNumber,
+        method: 'SINPE',
+        amount: totalPrice,
+        instructions: {
+          phone: process.env.SINPE_PHONE || '8888-8888',
+          accountName: process.env.SINPE_ACCOUNT_NAME || 'Skyplay Costa Rica',
+          reference: orderNumber
+        },
+        product: {
+          name: product.name,
+          code: product_code,
+          quantity
+        }
+      });
+    } catch (error) {
+      console.error('Error creating SINPE checkout:', error);
+      if (error instanceof HttpException) {
+        throw error;
+      }
+      throw new HttpException('Error creating SINPE checkout', 500);
+    }
+  }
+
   // Endpoint para recargar billetera (solo con Stripe/Tarjetas por ahora)
   @Post('wallet/recharge')
   @UseGuards(AuthGuard)

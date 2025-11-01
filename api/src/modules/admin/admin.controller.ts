@@ -48,4 +48,16 @@ export class AdminController {
     // Rechaza la solicitud y actualiza el status
     return this.adminService.rejectWholesalerRequest(id, body.reason);
   }
+
+  @Get('orders/sinpe-pending')
+  async getSinpePendingOrders() {
+    // Devuelve todas las órdenes SINPE pendientes de confirmación
+    return this.adminService.getSinpePendingOrders();
+  }
+
+  @Post('orders/:orderId/confirm-sinpe')
+  async confirmSinpeOrder(@Param('orderId') orderId: string) {
+    // Confirma pago SINPE, asigna credenciales y actualiza orden
+    return this.adminService.confirmSinpeOrder(parseInt(orderId));
+  }
 }

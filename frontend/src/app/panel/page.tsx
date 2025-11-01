@@ -426,7 +426,7 @@ export default function PanelMayoristaPage() {
                   <tr key={o.id}>
                     <td className="td-order">{o.order_number || o.id}</td>
                     <td className="td-date">{fmtDate(o.created_at || o.received_at)}</td>
-                    <td className="td-price">{o.currency || "USD"} {o.total_amount?.toFixed(2)}</td>
+                    <td className="td-price">{o.currency || "USD"} {o.total_amount ? parseFloat(o.total_amount.toString()).toFixed(2) : '0.00'}</td>
                     <td>
                       <span className="badge badge-active">{o.status?.toUpperCase()}</span>
                     </td>

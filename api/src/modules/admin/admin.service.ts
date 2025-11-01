@@ -90,4 +90,121 @@ export class AdminService {
     if (res.rowCount === 0) throw new Error('Reseller not found');
     return { success: true };
   }
+
+  async getSinpePendingOrders() {
+    const { rows } = await this.pg.query(
+      `SELECT 
+        be.id,
+        be.order_number,
+        be.tenant_id,
+        be.created_at,
+        be.payload,
+        t.name as tenant_name,
+        t.email as tenant_email
+       FROM billing_events be
+       JOIN tenants t ON t.id = be.tenant_id
+       WHERE be.event_type = 'purchase_pending' 
+         AND be.source = 'SINPE'
+       ORDER BY be.created_at DESC`
+    );
+    return rows;
+  }
+
+  async confirmSinpeOrder(orderId: number) {
+    const client = await this.pg.connect();
+    try {
+      await client.query('BEGIN');
+
+      // 1. Obtener detalles de la orden
+      const orderResult = await client.query(
+        `SELECT tenant_id, payload FROM billing_events WHERE id = $1 AND event_type = 'purchase_pending' AND source = 'SINPE'`,
+        [orderId]
+      );
+
+      if (orderResult.rows.length === 0) {
+        throw new Error('Order not found or already processed');
+      }
+
+      const { tenant_id, payload } = orderResult.rows[0];
+      const { product_code, quantity = 1 } = payload;
+
+      // 2. Crear servicios y asignar credenciales (igual que en el webhook)
+      const services = [];
+      for (let i = 0; i < quantity; i++) {
+        // Buscar credencial disponible
+        const credResult = await client.query(
+          `SELECT id, email, password, profile_name, pin 
+           FROM credentials 
+           WHERE product_code = $1 AND status = 'available' 
+           LIMIT 1 FOR UPDATE`,
+          [product_code]
+        );
+
+        if (credResult.rows.length === 0) {
+          throw new Error(`No available credentials for product ${product_code}`);
+        }
+
+        const credential = credResult.rows[0];
+        
+        // Crear el servicio
+        const serviceResult = await client.query(
+          `INSERT INTO services (tenant_id, product_code, credential_id, status, expires_at)
+           VALUES ($1, $2, $3, 'active', NOW() + INTERVAL '30 days')
+           RETURNING id`,
+          [tenant_id, product_code, credential.id]
+        );
+
+        const serviceId = serviceResult.rows[0].id;
+
+        // Marcar credencial como asignada
+        await client.query(
+          `UPDATE credentials SET status = 'assigned', assigned_to = $1, updated_at = NOW() WHERE id = $2`,
+          [serviceId, credential.id]
+        );
+
+        services.push({
+          id: serviceId,
+          credential: {
+            email: credential.email,
+            password: credential.password,
+            profile_name: credential.profile_name,
+            pin: credential.pin
+          }
+        });
+      }
+
+      // 3. Actualizar stock del producto
+      await client.query(
+        `UPDATE products SET stock = stock - $1 WHERE code = $2`,
+        [quantity, product_code]
+      );
+
+      // 4. Actualizar orden a completada
+      await client.query(
+        `UPDATE billing_events 
+         SET event_type = 'purchase_completed', 
+             payload = jsonb_set(payload, '{payment_status}', '"completed"'),
+             payload = jsonb_set(payload, '{confirmed_at}', to_jsonb(NOW()::text))
+         WHERE id = $1`,
+        [orderId]
+      );
+
+      await client.query('COMMIT');
+
+      console.log(`✅ SINPE order confirmed: ${orderId} for tenant ${tenant_id}`);
+      
+      return { 
+        success: true, 
+        order_id: orderId,
+        services,
+        message: 'Order confirmed and credentials assigned'
+      };
+    } catch (error) {
+      await client.query('ROLLBACK');
+      console.error('Error confirming SINPE order:', error);
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
 }

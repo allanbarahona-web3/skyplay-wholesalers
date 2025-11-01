@@ -1,7 +1,8 @@
 'use client';
 import React, { createContext, useContext, useState, ReactNode, useEffect } from 'react';
 import PaymentMethodModal from './PaymentMethodModal';
-import { getOverview, purchaseProduct, createProductCheckout, rechargeWallet } from '@/lib/api';
+import CredentialsModal from './CredentialsModal';
+import { getOverview, purchaseProduct, createProductCheckout, createSinpeProductCheckout, rechargeWallet } from '@/lib/api';
 
 interface PaymentData {
   service: string;
@@ -23,6 +24,9 @@ export function PaymentProvider({ children }: { children: ReactNode }) {
   const [isOpen, setIsOpen] = useState(false);
   const [paymentData, setPaymentData] = useState<PaymentData | null>(null);
   const [walletBalance, setWalletBalance] = useState(0);
+  const [showCredentials, setShowCredentials] = useState(false);
+  const [purchasedServices, setPurchasedServices] = useState<any[]>([]);
+  const [purchaseDetails, setPurchaseDetails] = useState<any>(null);
 
   useEffect(() => {
     refreshWallet();
@@ -76,21 +80,17 @@ export function PaymentProvider({ children }: { children: ReactNode }) {
           // Actualizar balance
           setWalletBalance(purchase.new_balance);
           
-          // Mostrar credenciales
-          const service = services[0];
-          const discount = purchase.discount_applied > 0 ? ` (${purchase.discount_applied}% descuento)` : '';
-          alert(
-            `✅ Compra exitosa!${discount}\n\n` +
-            `Producto: ${purchase.product_name}\n` +
-            `Precio: $${purchase.total_price.toFixed(2)}\n` +
-            `Nuevo saldo: $${purchase.new_balance.toFixed(2)}\n\n` +
-            `Credenciales:\n` +
-            `Email: ${service.credentials.email}\n` +
-            `Password: ${service.credentials.password}\n\n` +
-            `Expira: ${new Date(service.expires_at).toLocaleDateString()}`
-          );
+          // Preparar datos para el modal de credenciales
+          setPurchasedServices(services);
+          setPurchaseDetails({
+            product_name: purchase.product_name,
+            total_price: purchase.total_price,
+            discount_applied: purchase.discount_applied
+          });
           
+          // Cerrar modal de pago y mostrar modal de credenciales
           closePayment();
+          setShowCredentials(true);
         } else {
           alert(`❌ Error: ${result.error || 'No se pudo procesar la compra'}`);
         }
@@ -117,14 +117,32 @@ export function PaymentProvider({ children }: { children: ReactNode }) {
         alert('❌ Error al crear el checkout');
       }
     } else if (method === 'SINPE') {
-      // Redirigir a página de instrucciones SINPE con los datos del pago
-      const params = new URLSearchParams({
-        amount: paymentData.price.toString(),
-        service: paymentData.service,
-        plan: paymentData.plan
-      });
-      window.location.href = `/sinpe-payment?${params.toString()}`;
-      closePayment();
+      try {
+        // Crear orden SINPE
+        const result = await createSinpeProductCheckout({
+          product_code: paymentData.productCode,
+          quantity: 1
+        });
+
+        if (result.ok && result.data) {
+          // Redirigir a página de instrucciones SINPE
+          const params = new URLSearchParams({
+            amount: result.data.amount?.toString() || paymentData.price.toString(),
+            service: paymentData.service,
+            plan: paymentData.plan,
+            order: result.data.order_number,
+            phone: result.data.instructions?.phone || '8888-8888',
+            type: 'purchase'
+          });
+          window.location.href = `/sinpe-payment?${params.toString()}`;
+          closePayment();
+        } else {
+          alert(`❌ Error: ${result.error || 'No se pudo crear la orden SINPE'}`);
+        }
+      } catch (error) {
+        console.error('Error creating SINPE order:', error);
+        alert('❌ Error al crear la orden SINPE');
+      }
     } else {
       // Otros métodos de pago (PayPal, Binance)
       // TODO: Implementar redirección a procesadores externos
@@ -199,6 +217,12 @@ export function PaymentProvider({ children }: { children: ReactNode }) {
           onWalletRecharge={handleWalletRecharge}
         />
       )}
+      <CredentialsModal
+        isOpen={showCredentials}
+        onClose={() => setShowCredentials(false)}
+        services={purchasedServices}
+        purchaseInfo={purchaseDetails}
+      />
     </PaymentContext.Provider>
   );
 }

@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { usePayment } from "@/components/PaymentContext";
+import CredentialsModal from "@/components/CredentialsModal";
 import { getAllProducts, logout } from "@/lib/api";
 import { groupProductsByService, createPriceMap, createProductCodeMap, getBrandColors, type CatalogService, type PriceMap, type ProductCodeMap } from "@/lib/catalog-utils";
 
@@ -12,6 +13,8 @@ export default function Home() {
   const [catalogData, setCatalogData] = useState<CatalogService[]>([]);
   const [priceMap, setPriceMap] = useState<PriceMap>({});
   const [productCodeMap, setProductCodeMap] = useState<ProductCodeMap>({});
+  const [showCredentialsModal, setShowCredentialsModal] = useState(false);
+  const [purchasedServices, setPurchasedServices] = useState<any[]>([]);
   const router = useRouter();
   const { openPayment, walletBalance, refreshWallet } = usePayment();
 
@@ -23,16 +26,46 @@ export default function Home() {
     const urlParams = new URLSearchParams(window.location.search);
     const paymentStatus = urlParams.get('payment');
     if (paymentStatus === 'success') {
+      const orderType = urlParams.get('type');
+      
       // Dar tiempo al webhook para procesar
-      setTimeout(() => {
+      setTimeout(async () => {
         refreshWallet();
-        // Mostrar mensaje de éxito según el tipo de orden
-        const orderType = urlParams.get('type');
+        
         if (orderType === 'recharge') {
           alert('✅ ¡Recarga exitosa! Tu saldo ha sido actualizado.');
         } else if (orderType === 'purchase') {
-          alert('✅ ¡Compra exitosa! Tu cuenta ha sido activada. Revisa tus servicios en el Panel Mayorista.');
+          // Cargar servicios para mostrar credenciales
+          try {
+            const response = await fetch('http://localhost:3000/api/me/overview', {
+              credentials: 'include'
+            });
+            if (response.ok) {
+              const data = await response.json();
+              if (data.active_services && data.active_services.length > 0) {
+                // Mostrar el servicio más reciente (último comprado)
+                const latestService = data.active_services[0];
+                setPurchasedServices([{
+                  id: latestService.id,
+                  product_name: latestService.product_name,
+                  product_code: latestService.product_code,
+                  expires_at: latestService.expires_at,
+                  credentials: {
+                    email: latestService.credential_email,
+                    password: latestService.credential_password,
+                    profile_name: latestService.profile_name,
+                    pin: latestService.pin
+                  }
+                }]);
+                setShowCredentialsModal(true);
+              }
+            }
+          } catch (error) {
+            console.error('Error loading credentials:', error);
+            alert('✅ ¡Compra exitosa! Revisa tus credenciales en el Panel Mayorista.');
+          }
         }
+        
         // Limpiar URL
         window.history.replaceState({}, '', window.location.pathname);
       }, 2000);
@@ -256,6 +289,13 @@ export default function Home() {
           <p>© {new Date().getFullYear()} Skyplay · Catálogo Mayorista. Soporte por WhatsApp y panel B2B bajo solicitud.</p>
         </div>
       </footer>
+
+      {/* Modal de credenciales para compras exitosas */}
+      <CredentialsModal
+        isOpen={showCredentialsModal}
+        onClose={() => setShowCredentialsModal(false)}
+        services={purchasedServices}
+      />
     </div>
   );
 }

@@ -266,6 +266,16 @@ export interface WalletRechargeResponse {
 }
 
 /**
+ * Crear orden SINPE para compra de producto del catálogo
+ */
+export async function createSinpeProductCheckout(data: PurchaseRequest): Promise<ApiResponse<WalletRechargeResponse>> {
+  return apiFetch('/services/checkout/sinpe', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+/**
  * Recargar billetera con Stripe, SINPE o Binance
  */
 export async function rechargeWallet(data: WalletRechargeRequest): Promise<ApiResponse<WalletRechargeResponse>> {
