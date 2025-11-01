@@ -102,20 +102,50 @@ export class ServicesController {
         [newBalance, tenant_id]
       );
 
-      // 5. Crear servicios (uno por cada quantity)
+            // 5. Crear servicios (uno por cada quantity)
       const services = [];
       for (let i = 0; i < quantity; i++) {
-        // Generar credenciales simples (esto debería venir de un sistema de credenciales real)
-        const credentials = this.generateCredentials(product.name);
-        
-        const serviceResult = await client.query(
-          `INSERT INTO services (tenant_id, product_code, credentials, status, expires_at)
-           VALUES ($1, $2, $3, 'active', NOW() + INTERVAL '30 days')
-           RETURNING id, product_code, credentials, status, expires_at, created_at`,
-          [tenant_id, product_code, JSON.stringify(credentials)]
+        // Buscar una credencial disponible del producto
+        const credentialResult = await client.query(
+          `SELECT id, email, password, profile_name, pin 
+           FROM credentials 
+           WHERE product_code = $1 AND status = 'available' 
+           LIMIT 1 FOR UPDATE`,
+          [product_code]
         );
 
-        services.push(serviceResult.rows[0]);
+        if (credentialResult.rows.length === 0) {
+          throw new HttpException(`No available credentials for product ${product_code}`, 400);
+        }
+
+        const credential = credentialResult.rows[0];
+        
+        // Crear el servicio
+        const serviceResult = await client.query(
+          `INSERT INTO services (tenant_id, product_code, credential_id, status, expires_at)
+           VALUES ($1, $2, $3, 'active', NOW() + INTERVAL '30 days')
+           RETURNING id, product_code, credential_id, status, expires_at, created_at`,
+          [tenant_id, product_code, credential.id]
+        );
+
+        const service = serviceResult.rows[0];
+
+        // Marcar la credencial como asignada
+        await client.query(
+          `UPDATE credentials SET status = 'assigned', assigned_to = $1, updated_at = NOW() WHERE id = $2`,
+          [service.id, credential.id]
+        );
+
+        // Agregar las credenciales al objeto del servicio para devolverlas
+        services.push({
+          ...service,
+          credentials: {
+            email: credential.email,
+            password: credential.password,
+            profile_name: credential.profile_name,
+            pin: credential.pin
+          }
+        });
       }
 
       // 6. Actualizar stock del producto
@@ -169,15 +199,7 @@ export class ServicesController {
     }
   }
 
-  private generateCredentials(productName: string): { email: string; password: string } {
-    // Generar credenciales temporales
-    // En producción, esto debería obtener credenciales reales de un pool
-    const randomSuffix = Math.random().toString(36).substring(2, 8);
-    return {
-      email: `user_${randomSuffix}@temp.skyplay.com`,
-      password: `temp_${randomSuffix}`
-    };
-  }
+  // Función removida - ahora usamos credenciales reales de la tabla credentials
 
   // Endpoint para crear checkout de Stripe para compra de producto del catálogo
   @Post('checkout')
@@ -279,7 +301,7 @@ export class ServicesController {
           quantity: quantity.toString(),
           order_type: 'catalog_purchase'
         },
-        success_url: `${process.env.FRONTEND_URL || 'http://localhost:3001'}/?payment=success&order=${orderNumber}`,
+        success_url: `${process.env.FRONTEND_URL || 'http://localhost:3001'}/?payment=success&type=purchase&order=${orderNumber}`,
         cancel_url: `${process.env.FRONTEND_URL || 'http://localhost:3001'}/?payment=cancel`
       });
 

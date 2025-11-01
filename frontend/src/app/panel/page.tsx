@@ -90,61 +90,61 @@ export default function PanelMayoristaPage() {
   const [toastMsg, setToastMsg] = useState<string>("");
   const [toastOk, setToastOk] = useState<boolean>(false);
 
-  // Simulación de carga inicial (reemplazar con fetch real)
+  // Cargar datos reales desde el backend
   useEffect(() => {
-    // Aquí iría la carga de datos desde el backend
-    setServices([
-      {
-        id: "1",
-        product_name: "Netflix Premium",
-        product_code: "NETFLIX",
-        status: "active",
-        expires_at: "2025-11-14T21:36:00Z",
-        credential_email: "demo@netflix.com",
-        credential_password: "pass1234",
-      },
-      {
-        id: "2",
-        product_name: "Disney+",
-        product_code: "DISNEY",
-        status: "soon",
-        expires_at: "2025-11-01T21:36:00Z",
-        credential_email: "demo@disney.com",
-        credential_password: "pass5678",
-      },
-      {
-        id: "3",
-        product_name: "HBO Max",
-        product_code: "HBO",
-        status: "expired",
-        expires_at: "2025-10-25T21:36:00Z",
-        credential_email: "demo@hbo.com",
-        credential_password: "pass9999",
-      },
-    ]);
-    setOrders([
-      {
-        id: "o1",
-        order_number: "ORD-001",
-        created_at: "2025-10-28T21:36:00Z",
-        total_amount: 0.00,
-        currency: "USD",
-        status: "completed",
-        product_name: "Netflix Premium",
-        credential_email: "demo@netflix.com",
-      },
-      {
-        id: "o2",
-        order_number: "ORD-002",
-        created_at: "2025-10-20T21:36:00Z",
-        total_amount: 0.00,
-        currency: "USD",
-        status: "completed",
-        product_name: "Disney+",
-        credential_email: "demo@disney.com",
-      },
-    ]);
+    loadOverviewData();
   }, []);
+
+  const loadOverviewData = async () => {
+    try {
+      const response = await fetch('http://localhost:3000/api/me/overview', {
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          router.push('/login');
+          return;
+        }
+        throw new Error('Error loading data');
+      }
+
+      const data = await response.json();
+      
+      // Cargar servicios activos
+      if (data.active_services) {
+        const mappedServices = data.active_services.map((s: any) => ({
+          id: s.id,
+          product_name: s.product_name || s.product_code,
+          product_code: s.product_code,
+          status: s.status,
+          expires_at: s.expires_at,
+          credential_email: s.credential_email,
+          credential_password: s.credential_password,
+          profile_name: s.profile_name,
+          pin: s.pin
+        }));
+        setServices(mappedServices);
+      }
+
+      // Cargar órdenes recientes
+      if (data.last_orders) {
+        setOrders(data.last_orders);
+      }
+
+      // Cargar suscripción
+      if (data.subscription) {
+        setSubscription(data.subscription);
+      }
+    } catch (error) {
+      console.error('Error loading overview data:', error);
+      setToastMsg('Error cargando datos');
+      setToastOk(false);
+    }
+  };
 
   // Toast
   useEffect(() => {
@@ -162,7 +162,8 @@ export default function PanelMayoristaPage() {
     openPayment({
       service: service.product_name,
       plan: 'Renovación 1 mes',
-      price: 7.95 // Precio con descuento
+      price: 7.95, // Precio con descuento
+      productCode: service.product_code
     });
   };
 

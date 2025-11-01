@@ -243,12 +243,35 @@ export class AuthController {
       
       // 2. Crear servicios (uno por cada quantity)
       for (let i = 0; i < quantity; i++) {
-        const credentials = this.generateCredentials(orderPayload.product_name);
+        // Buscar una credencial disponible
+        const credResult = await this.pg.query(
+          `SELECT id FROM credentials 
+           WHERE product_code = $1 AND status = 'available' 
+           LIMIT 1`,
+          [productCode]
+        );
+
+        if (credResult.rows.length === 0) {
+          console.error(`❌ No credentials available for product ${productCode}`);
+          continue;
+        }
+
+        const credentialId = credResult.rows[0].id;
         
+        // Crear el servicio
+        const serviceResult = await this.pg.query(
+          `INSERT INTO services (tenant_id, product_code, credential_id, status, expires_at)
+           VALUES ($1, $2, $3, 'active', NOW() + INTERVAL '30 days')
+           RETURNING id`,
+          [tenantId, productCode, credentialId]
+        );
+
+        const serviceId = serviceResult.rows[0].id;
+
+        // Marcar la credencial como asignada
         await this.pg.query(
-          `INSERT INTO services (tenant_id, product_code, credentials, status, expires_at)
-           VALUES ($1, $2, $3, 'active', NOW() + INTERVAL '30 days')`,
-          [tenantId, productCode, JSON.stringify(credentials)]
+          `UPDATE credentials SET status = 'assigned', assigned_to = $1 WHERE id = $2`,
+          [serviceId, credentialId]
         );
       }
 

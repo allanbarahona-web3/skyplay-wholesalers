@@ -26,10 +26,12 @@ export default function Home() {
       // Dar tiempo al webhook para procesar
       setTimeout(() => {
         refreshWallet();
-        // Mostrar mensaje de éxito
+        // Mostrar mensaje de éxito según el tipo de orden
         const orderType = urlParams.get('type');
         if (orderType === 'recharge') {
           alert('✅ ¡Recarga exitosa! Tu saldo ha sido actualizado.');
+        } else if (orderType === 'purchase') {
+          alert('✅ ¡Compra exitosa! Tu cuenta ha sido activada. Revisa tus servicios en el Panel Mayorista.');
         }
         // Limpiar URL
         window.history.replaceState({}, '', window.location.pathname);

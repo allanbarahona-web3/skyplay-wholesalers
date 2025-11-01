@@ -209,7 +209,13 @@ export default function PaymentMethodModal({
                   <span className="price-label">Total</span>
                   <span className="price-amount">${price.toFixed(2)}</span>
                 </div>
-                <button className="btn-pay" onClick={handlePayment}>Pagar</button>
+                <button 
+                  className="btn-pay" 
+                  onClick={() => onPayment('WALLET')}
+                  disabled={walletBalance < price}
+                >
+                  {walletBalance < price ? 'Saldo insuficiente' : 'Pagar con billetera'}
+                </button>
               </div>
             </div>
           </div>
