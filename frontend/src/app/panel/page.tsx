@@ -224,7 +224,7 @@ export default function PanelMayoristaPage() {
           </div>
           <div className="apple-header-right">
             <button className="apple-btn-link" onClick={() => router.push("/")}>
-              <span>🏪</span> Tienda
+              <span>🏪</span> Catálogo Mayorista
             </button>
             <button className="apple-btn-link" onClick={() => router.push("/login")}>
               <span>👤</span> Salir

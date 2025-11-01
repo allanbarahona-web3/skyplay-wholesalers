@@ -205,7 +205,7 @@ export default function Home() {
                             {price && (
                               <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '8px' }}>
                                 <div className="price" style={{ display: 'block', margin: 0, flex: 1 }}>
-                                  ${parseFloat(price).toFixed(2)}
+                                  ${Number(price).toFixed(2)}
                                 </div>
                                 <button className="btn small" onClick={() => handleBuy(item.svc, plan)} style={{ background: 'var(--primary)', padding: '6px 14px', fontSize: '0.85rem' }}>
                                   Comprar
