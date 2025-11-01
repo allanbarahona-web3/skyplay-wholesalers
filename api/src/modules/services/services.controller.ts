@@ -11,6 +11,19 @@ type JWTPayload = { id: number; tenant_id: number | null; role: string };
 export class ServicesController {
   constructor(@Inject('PG_POOL') private readonly pg: Pool) {}
   
+  // Endpoint público para obtener catálogo completo
+  @Get('catalog')
+  async getCatalog(@Res() res: Response) {
+    try {
+      const { rows } = await this.pg.query(
+        `SELECT code, name, category, price, stock FROM products ORDER BY category, name`
+      );
+      return res.json(rows);
+    } catch (error) {
+      console.error('Error getting catalog:', error);
+      throw new HttpException('Error fetching catalog', 500);
+    }
+  }
 
   @Post(':id/renew')
 async renew(@Param('id') serviceId: string, @Req() req: Request, @Res() res: Response) {
