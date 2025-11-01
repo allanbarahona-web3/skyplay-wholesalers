@@ -1,17 +1,15 @@
 // src/modules/services/services.controller.ts
-import { Controller, Get, Post, Param, Body, Res, Req, HttpException, Inject } from '@nestjs/common';
+import { Controller, Get, Post, Param, Body, Res, Req, HttpException, Inject, UseGuards } from '@nestjs/common';
 import { Response, Request } from 'express';
 import { Pool } from 'pg';
-import * as jwt from 'jsonwebtoken';
-
-type JWTPayload = { id: number; tenant_id: number | null; role: string };
+import { AuthGuard, JWTPayload } from '../../guards/auth.guard';
 
 
 @Controller('services')
 export class ServicesController {
   constructor(@Inject('PG_POOL') private readonly pg: Pool) {}
   
-  // Endpoint público para obtener catálogo completo
+  // Endpoint público para obtener catálogo completo (SIN GUARD - es público)
   @Get('catalog')
   async getCatalog(@Res() res: Response) {
     try {
@@ -26,11 +24,9 @@ export class ServicesController {
   }
 
   @Post(':id/renew')
+  @UseGuards(AuthGuard) // Proteger este endpoint
 async renew(@Param('id') serviceId: string, @Req() req: Request, @Res() res: Response) {
-  const raw = req.cookies?.[process.env.SESSION_COOKIE_NAME || 'sky_sid'];
-  if (!raw) throw new HttpException('Unauthorized', 401);
-  
-  const { tenant_id } = jwt.verify(raw, process.env.JWT_SECRET!) as JWTPayload;
+  const { tenant_id } = (req as any).user as JWTPayload;
   if (!tenant_id) throw new HttpException('Unauthorized', 401);
 
   // Obtener servicio
@@ -86,12 +82,10 @@ private async createOrder(tenantId: number, service: any, finalPrice: number) {
 }
 
  @Post(':id/checkout')
+  @UseGuards(AuthGuard) // Proteger este endpoint
 async createCheckout(@Param('id') serviceId: string, @Req() req: Request, @Res() res: Response) {
   console.log('>>> createCheckout called for serviceId=', serviceId);
-  const raw = req.cookies?.[process.env.SESSION_COOKIE_NAME || 'sky_sid'];
-  if (!raw) throw new HttpException('Unauthorized', 401);
-  
-  const { tenant_id } = jwt.verify(raw, process.env.JWT_SECRET!) as JWTPayload;
+  const { tenant_id } = (req as any).user as JWTPayload;
   if (!tenant_id) throw new HttpException('Unauthorized', 401);
 
   // Obtener orden pendiente y precio

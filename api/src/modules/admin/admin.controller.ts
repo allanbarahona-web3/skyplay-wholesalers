@@ -1,9 +1,12 @@
 import { Controller, Get, Post, Body, UseGuards, Param } from '@nestjs/common';
 import { AdminService } from './admin.service';
-// import { AuthGuard } from '../auth/auth.guard'; // Si tienes guardas de admin
+import { AuthGuard } from '../../guards/auth.guard';
+import { RoleGuard } from '../../guards/role.guard';
+import { Roles } from '../../decorators/roles.decorator';
 
 @Controller('admin')
-// @UseGuards(AuthGuard) // Protege los endpoints para admin
+@UseGuards(AuthGuard, RoleGuard) // Requiere autenticación Y validación de roles
+@Roles('admin') // SOLO usuarios con role='admin' pueden acceder
 export class AdminController {
   constructor(private readonly adminService: AdminService) {}
 

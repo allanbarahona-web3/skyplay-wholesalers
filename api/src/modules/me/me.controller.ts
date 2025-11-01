@@ -1,12 +1,11 @@
 // src/modules/me/me.controller.ts
-import { Controller, Get, Req, HttpException, Inject, Param } from '@nestjs/common';
+import { Controller, Get, Req, HttpException, Inject, Param, UseGuards } from '@nestjs/common';
 import { Request } from 'express';
 import { Pool } from 'pg';
-import * as jwt from 'jsonwebtoken';
-
-type JWTPayload = { id: number; tenant_id: number | null; role: string };
+import { AuthGuard, JWTPayload } from '../../guards/auth.guard';
 
 @Controller('me')
+@UseGuards(AuthGuard) // Proteger TODOS los endpoints de /me
 export class MeController {
   constructor(@Inject('PG_POOL') private readonly pg: Pool) {}
 
@@ -24,17 +23,8 @@ async getProductPrice(@Param('code') code: string) {
 
   @Get('overview')
 async overview(@Req() req: Request) {
-  // Verificar cookie JWT
-  const raw = req.cookies?.[process.env.SESSION_COOKIE_NAME || 'sky_sid'];
-  if (!raw) throw new HttpException('No autorizado', 401);
-
-  let payload: JWTPayload;
-  try {
-    payload = jwt.verify(raw, process.env.JWT_SECRET!) as JWTPayload;
-  } catch {
-    throw new HttpException('Token inválido', 401);
-  }
-
+  // El AuthGuard ya validó el token y agregó el user al request
+  const payload = (req as any).user as JWTPayload;
   const { id: userId, tenant_id, role } = payload;
 
   // Obtener datos del usuario

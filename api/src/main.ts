@@ -13,14 +13,31 @@ async function bootstrap() {
   app.use(cookieParser());
   app.setGlobalPrefix('api');
   app.useStaticAssets(join(__dirname, '..', '..', 'app', 'public'));
+  
+  // CORS - Solo dominios específicos
+  const allowedOrigins = process.env.NODE_ENV === 'production'
+    ? [
+        'https://skyplay.com', // Tu dominio de producción
+        'https://www.skyplay.com',
+        'https://mayoristas.skyplay.com',
+      ]
+    : [
+        'http://localhost:3001', // Frontend principal dev
+        'http://localhost:3002', // Frontend alternativo
+      ];
+
   app.enableCors({
-    origin: [
-      'http://localhost:3000',
-      'http://localhost:3001',
-      'http://localhost:3002',
-      'http://localhost:5500',
-      'http://127.0.0.1:5500'
-    ],
+    origin: (origin, callback) => {
+      // Permitir requests sin origin (como Postman, curl)
+      if (!origin) return callback(null, true);
+      
+      if (allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        console.warn(`🚫 CORS blocked request from: ${origin}`);
+        callback(new Error('Not allowed by CORS'));
+      }
+    },
     credentials: true,
   });
 

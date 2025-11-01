@@ -1,12 +1,11 @@
-import { Controller, Post, Body, Req, Res, HttpException, Inject } from '@nestjs/common';
+import { Controller, Post, Body, Req, Res, HttpException, Inject, UseGuards } from '@nestjs/common';
 import { Request, Response } from 'express';
 import { Pool } from 'pg';
-import * as jwt from 'jsonwebtoken';
 import Stripe from 'stripe';
-
-type JWTPayload = { id: number; tenant_id: number | null; role: string };
+import { AuthGuard, JWTPayload } from '../../guards/auth.guard';
 
 @Controller('subscriptions')
+@UseGuards(AuthGuard) // Proteger TODOS los endpoints de subscriptions
 export class SubscriptionsController {
   private stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
 
@@ -14,10 +13,7 @@ export class SubscriptionsController {
 
   @Post('checkout')
   async createCheckout(@Body() body: { plan: string }, @Req() req: Request, @Res() res: Response) {
-    const raw = req.cookies?.[process.env.SESSION_COOKIE_NAME || 'sky_sid'];
-    if (!raw) throw new HttpException('Unauthorized', 401);
-    
-    const { tenant_id } = jwt.verify(raw, process.env.JWT_SECRET!) as JWTPayload;
+    const { tenant_id } = (req as any).user as JWTPayload;
     if (!tenant_id) throw new HttpException('Unauthorized', 401);
 
     type Plan = { amount: number; interval: 'month'; interval_count?: number; name: string };
@@ -75,10 +71,7 @@ export class SubscriptionsController {
   }
   @Post('cancel')
   async cancelSubscription(@Body() body: { subscription_id: string }, @Req() req: Request, @Res() res: Response) {
-    const raw = req.cookies?.[process.env.SESSION_COOKIE_NAME || 'sky_sid'];
-    if (!raw) throw new HttpException('Unauthorized', 401);
-    
-    const { tenant_id } = jwt.verify(raw, process.env.JWT_SECRET!) as JWTPayload;
+    const { tenant_id } = (req as any).user as JWTPayload;
     if (!tenant_id) throw new HttpException('Unauthorized', 401);
 
     const { subscription_id } = body;
