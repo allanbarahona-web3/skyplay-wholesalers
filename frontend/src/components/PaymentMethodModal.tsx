@@ -38,6 +38,14 @@ export default function PaymentMethodModal({
     setSelectedMethod(null);
   };
 
+  const handleMethodSelect = (method: string) => {
+    setSelectedMethod(method);
+    // Para SINPE, redirigir automáticamente
+    if (method === 'SINPE') {
+      onPayment(method);
+    }
+  };
+
   const handleRecharge = () => {
     if (!rechargeMethod || !rechargeAmount) {
       alert('Ingresa monto y método de recarga');
@@ -51,6 +59,19 @@ export default function PaymentMethodModal({
     onWalletRecharge(amount, rechargeMethod);
     setRechargeAmount('');
     setRechargeMethod(null);
+  };
+
+  const handleRechargeMethodSelect = (method: string) => {
+    setRechargeMethod(method);
+    // Para SINPE, redirigir automáticamente si hay monto
+    if (method === 'SINPE' && rechargeAmount) {
+      const amount = parseFloat(rechargeAmount);
+      if (!isNaN(amount) && amount >= 1) {
+        onWalletRecharge(amount, method);
+        setRechargeAmount('');
+        setRechargeMethod(null);
+      }
+    }
   };
 
   return (
@@ -85,35 +106,35 @@ export default function PaymentMethodModal({
             <div className="payment-grid">
               <div 
                 className={`payment-option${selectedMethod === 'SINPE' ? ' selected' : ''}`}
-                onClick={() => setSelectedMethod('SINPE')}
+                onClick={() => handleMethodSelect('SINPE')}
               >
                 <div className="payment-icon">📱</div>
                 <div className="payment-name">Sinpe Móvil</div>
               </div>
               <div 
                 className={`payment-option${selectedMethod === 'CARD' ? ' selected' : ''}`}
-                onClick={() => setSelectedMethod('CARD')}
+                onClick={() => handleMethodSelect('CARD')}
               >
                 <div className="payment-icon">💳</div>
                 <div className="payment-name">Tarjetas</div>
               </div>
               <div 
                 className={`payment-option${selectedMethod === 'BINANCE' ? ' selected' : ''}`}
-                onClick={() => setSelectedMethod('BINANCE')}
+                onClick={() => handleMethodSelect('BINANCE')}
               >
                 <div className="payment-icon">🟡</div>
                 <div className="payment-name">Binance Pay</div>
               </div>
               <div 
                 className={`payment-option${selectedMethod === 'PAYPAL' ? ' selected' : ''}`}
-                onClick={() => setSelectedMethod('PAYPAL')}
+                onClick={() => handleMethodSelect('PAYPAL')}
               >
                 <div className="payment-icon">🅿️</div>
                 <div className="payment-name">PayPal</div>
               </div>
               <div 
                 className={`payment-option payment-wallet${selectedMethod === 'WALLET' ? ' selected' : ''}`}
-                onClick={() => setSelectedMethod('WALLET')}
+                onClick={() => handleMethodSelect('WALLET')}
               >
                 <div className="payment-icon">💰</div>
                 <div className="payment-name">Billetera</div>
@@ -150,25 +171,25 @@ export default function PaymentMethodModal({
               <div className="payment-grid compact">
                 <div 
                   className={`payment-option-compact${rechargeMethod === 'SINPE' ? ' selected' : ''}`}
-                  onClick={() => setRechargeMethod('SINPE')}
+                  onClick={() => handleRechargeMethodSelect('SINPE')}
                 >
                   📱 SINPE
                 </div>
                 <div 
                   className={`payment-option-compact${rechargeMethod === 'CARD' ? ' selected' : ''}`}
-                  onClick={() => setRechargeMethod('CARD')}
+                  onClick={() => handleRechargeMethodSelect('CARD')}
                 >
                   💳 Tarjetas
                 </div>
                 <div 
                   className={`payment-option-compact${rechargeMethod === 'BINANCE' ? ' selected' : ''}`}
-                  onClick={() => setRechargeMethod('BINANCE')}
+                  onClick={() => handleRechargeMethodSelect('BINANCE')}
                 >
                   🟡 Binance
                 </div>
                 <div 
                   className={`payment-option-compact${rechargeMethod === 'PAYPAL' ? ' selected' : ''}`}
-                  onClick={() => setRechargeMethod('PAYPAL')}
+                  onClick={() => handleRechargeMethodSelect('PAYPAL')}
                 >
                   🅿️ PayPal
                 </div>
