@@ -6,7 +6,8 @@ export default function SinpeInstructionsPage() {
   const router = useRouter();
   const params = useSearchParams();
   const amount = params.get("amount") || "0.00";
-  const plan = params.get("plan") || "monthly";
+  const service = params.get("service") || "Servicio";
+  const plan = params.get("plan") || "Plan";
   const [showSteps, setShowSteps] = React.useState(false);
 
   const confirmPayment = () => {
@@ -34,6 +35,12 @@ export default function SinpeInstructionsPage() {
             <div className="sinpe-icon">📱</div>
             <h1 className="sinpe-title">Pago por SINPE Móvil</h1>
             <p className="sinpe-subtitle">Sigue estos pasos para completar tu pago</p>
+          </div>
+
+          {/* Producto/Servicio */}
+          <div className="sinpe-product-info">
+            <div className="product-name">{service}</div>
+            <div className="product-plan">{plan}</div>
           </div>
 
           {/* Amount destacado */}

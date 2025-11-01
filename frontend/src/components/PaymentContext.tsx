@@ -66,19 +66,37 @@ export function PaymentProvider({ children }: { children: ReactNode }) {
       setWalletBalance(wallet.get());
       alert(`Pago con saldo realizado: $${paymentData.price.toFixed(2)}`);
       closePayment();
+    } else if (method === 'SINPE') {
+      // Redirigir a página de instrucciones SINPE con los datos del pago
+      const params = new URLSearchParams({
+        amount: paymentData.price.toString(),
+        service: paymentData.service,
+        plan: paymentData.plan
+      });
+      window.location.href = `/sinpe-payment?${params.toString()}`;
+      closePayment();
     } else {
-      // Aquí se redirigirá al procesador de pagos (Stripe, PayPal, SINPE, etc.)
+      // Otros métodos de pago (Stripe, PayPal, Binance)
+      // TODO: Implementar redirección a procesadores externos
       alert(`Procesando pago ${method} por $${paymentData.price.toFixed(2)} de ${paymentData.service} · ${paymentData.plan}`);
       closePayment();
     }
   };
 
   const handleWalletRecharge = (amount: number, method: string) => {
-    // Aquí se procesará la recarga (redirección a procesador)
-    alert(`Procesando recarga de $${amount} vía ${method}`);
-    // Simulación: agregar saldo (en producción esto vendrá del backend después del pago)
-    // wallet.set(wallet.get() + amount);
-    // setWalletBalance(wallet.get());
+    if (method === 'SINPE') {
+      // Redirigir a página SINPE para recarga de billetera
+      const params = new URLSearchParams({
+        amount: amount.toString(),
+        service: 'Recarga de Billetera',
+        plan: `$${amount} USD`
+      });
+      window.location.href = `/sinpe-payment?${params.toString()}`;
+    } else {
+      // Otros métodos de recarga
+      // TODO: Implementar redirección a procesadores externos
+      alert(`Procesando recarga de $${amount} vía ${method}`);
+    }
   };
 
   return (
