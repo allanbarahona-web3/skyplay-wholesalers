@@ -15,6 +15,16 @@ export class AuthController {
   
   private stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
 
+  private generateCredentials(productName: string): { email: string; password: string } {
+    // Generar credenciales temporales
+    // En producción, esto debería obtener credenciales reales de un pool
+    const randomSuffix = Math.random().toString(36).substring(2, 8);
+    return {
+      email: `user_${randomSuffix}@temp.skyplay.com`,
+      password: `temp_${randomSuffix}`
+    };
+  }
+
   @Post('login-otp')
   async login(@Body() body: any, @Res() res: Response) {
     const { email, password, otp } = body || {};
@@ -210,38 +220,122 @@ export class AuthController {
       case 'checkout.session.completed': {
   const session = event.data.object as Stripe.Checkout.Session;
   
-  // Verificar si es renovación de servicio
-if (session.metadata?.order_type === 'renewal') {
-  const serviceId = session.metadata.service_id;
-  const orderId = session.metadata.order_id;
+  // ========== COMPRA DE CATÁLOGO ==========
+  if (session.metadata?.order_type === 'catalog_purchase') {
+    const orderId = session.metadata.order_id;
+    const productCode = session.metadata.product_code;
+    const tenantId = parseInt(session.metadata.tenant_id || '0');
+    const quantity = parseInt(session.metadata.quantity || '1');
+
+    try {
+      // 1. Obtener detalles de la orden
+      const orderResult = await this.pg.query(
+        `SELECT payload FROM billing_events WHERE id = $1`,
+        [orderId]
+      );
+
+      if (orderResult.rows.length === 0) {
+        console.error(`❌ Order ${orderId} not found`);
+        break;
+      }
+
+      const orderPayload = orderResult.rows[0].payload;
+      
+      // 2. Crear servicios (uno por cada quantity)
+      for (let i = 0; i < quantity; i++) {
+        const credentials = this.generateCredentials(orderPayload.product_name);
+        
+        await this.pg.query(
+          `INSERT INTO services (tenant_id, product_code, credentials, status, expires_at)
+           VALUES ($1, $2, $3, 'active', NOW() + INTERVAL '30 days')`,
+          [tenantId, productCode, JSON.stringify(credentials)]
+        );
+      }
+
+      // 3. Actualizar stock del producto
+      await this.pg.query(
+        `UPDATE products SET stock = stock - $1 WHERE code = $2`,
+        [quantity, productCode]
+      );
+
+      // 4. Actualizar orden a completada
+      await this.pg.query(
+        `UPDATE billing_events 
+         SET event_type = 'purchase_completed', 
+             payload = jsonb_set(payload, '{payment_status}', '"completed"')
+         WHERE id = $1`,
+        [orderId]
+      );
+
+      console.log(`✅ Catalog purchase completed: ${quantity}x ${productCode} for tenant ${tenantId}`);
+    } catch (err: any) {
+      console.error('Error processing catalog purchase:', err.message);
+    }
+    break;
+  }
+
+  // ========== RECARGA DE BILLETERA ==========
+  if (session.metadata?.order_type === 'wallet_recharge') {
+    const orderId = session.metadata.order_id;
+    const tenantId = parseInt(session.metadata.tenant_id || '0');
+    const amount = parseFloat(session.metadata.amount || '0');
+    const totalWithBonus = parseFloat(session.metadata.total_with_bonus || amount.toString());
+
+    try {
+      // 1. Actualizar balance de la billetera
+      await this.pg.query(
+        `UPDATE tenants SET wallet_balance = wallet_balance + $1 WHERE id = $2`,
+        [totalWithBonus, tenantId]
+      );
+
+      // 2. Actualizar orden a completada
+      await this.pg.query(
+        `UPDATE billing_events 
+         SET event_type = 'wallet_recharge_completed', 
+             payload = jsonb_set(payload, '{payment_status}', '"completed"')
+         WHERE id = $1`,
+        [orderId]
+      );
+
+      console.log(`✅ Wallet recharged: $${totalWithBonus} for tenant ${tenantId} (original: $${amount})`);
+    } catch (err: any) {
+      console.error('Error processing wallet recharge:', err.message);
+    }
+    break;
+  }
   
-  // Actualizar orden a completada
-  await this.pg.query(
-  `UPDATE billing_events 
-   SET event_type = 'renewal_completed', 
-       payload = jsonb_set(
-         jsonb_set(payload, '{payment_status}', '"completed"'),
-         '{status}', '"completed"'
-       )
-   WHERE id = $1`,
-  [orderId]
-);
-  
-  // Extender servicio
-  await this.pg.query(
-    `UPDATE services 
-     SET expires_at = CASE 
-       WHEN expires_at > NOW() THEN expires_at + INTERVAL '30 days'
-       ELSE NOW() + INTERVAL '30 days'
-     END,
-     status = 'active'
+  // ========== RENOVACIÓN DE SERVICIO ==========
+  if (session.metadata?.order_type === 'renewal') {
+    const serviceId = session.metadata.service_id;
+    const orderId = session.metadata.order_id;
+    
+    // Actualizar orden a completada
+    await this.pg.query(
+    `UPDATE billing_events 
+     SET event_type = 'renewal_completed', 
+         payload = jsonb_set(
+           jsonb_set(payload, '{payment_status}', '"completed"'),
+           '{status}', '"completed"'
+         )
      WHERE id = $1`,
-    [serviceId]
+    [orderId]
   );
-  
-  console.log(`✅ Service ${serviceId} renewed for 30 days`);
-  break;
-}
+    
+    // Extender servicio
+    await this.pg.query(
+      `UPDATE services 
+       SET expires_at = CASE 
+         WHEN expires_at > NOW() THEN expires_at + INTERVAL '30 days'
+         ELSE NOW() + INTERVAL '30 days'
+       END,
+       status = 'active'
+       WHERE id = $1`,
+      [serviceId]
+    );
+    
+    console.log(`✅ Service ${serviceId} renewed for 30 days`);
+    break;
+  }
   
   // Suscripción preferencial
   const tenantId = session.metadata?.tenant_id;

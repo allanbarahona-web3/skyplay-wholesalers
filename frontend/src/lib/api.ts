@@ -185,3 +185,92 @@ export async function getAllUsers(): Promise<ApiResponse<any[]>> {
     method: 'GET',
   });
 }
+
+// ============================================================================
+// PURCHASE ENDPOINTS
+// ============================================================================
+
+export interface PurchaseRequest {
+  product_code: string;
+  quantity?: number;
+}
+
+export interface PurchaseResponse {
+  success: boolean;
+  services: Array<{
+    id: string;
+    product_code: string;
+    credentials: {
+      email: string;
+      password: string;
+    };
+    status: string;
+    expires_at: string;
+    created_at: string;
+  }>;
+  purchase: {
+    product_code: string;
+    product_name: string;
+    quantity: number;
+    unit_price: number;
+    total_price: number;
+    discount_applied: number;
+    new_balance: number;
+  };
+}
+
+/**
+ * Comprar un producto del catálogo con saldo de billetera
+ */
+export async function purchaseProduct(data: PurchaseRequest): Promise<ApiResponse<PurchaseResponse>> {
+  return apiFetch('/services/purchase', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export interface CheckoutResponse {
+  checkout_url: string;
+  order_number: string;
+  order_id: number;
+}
+
+/**
+ * Crear checkout de Stripe para comprar producto del catálogo
+ */
+export async function createProductCheckout(data: PurchaseRequest): Promise<ApiResponse<CheckoutResponse>> {
+  return apiFetch('/services/checkout', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export interface WalletRechargeRequest {
+  amount: number;
+  method: 'CARD' | 'SINPE' | 'BINANCE';
+}
+
+export interface WalletRechargeResponse {
+  method: string;
+  order_number: string;
+  order_id: number;
+  checkout_url?: string;
+  amount?: number;
+  bonus_percentage?: number;
+  total_with_bonus?: number;
+  instructions?: {
+    phone?: string;
+    amount?: number;
+    message?: string;
+  };
+}
+
+/**
+ * Recargar billetera con Stripe, SINPE o Binance
+ */
+export async function rechargeWallet(data: WalletRechargeRequest): Promise<ApiResponse<WalletRechargeResponse>> {
+  return apiFetch('/services/wallet/recharge', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}

@@ -23,6 +23,395 @@ export class ServicesController {
     }
   }
 
+  // Endpoint para comprar un producto del catálogo
+  @Post('purchase')
+  @UseGuards(AuthGuard)
+  async purchaseProduct(
+    @Body() body: { product_code: string; quantity?: number },
+    @Req() req: Request,
+    @Res() res: Response
+  ) {
+    const { tenant_id } = (req as any).user as JWTPayload;
+    const { product_code, quantity = 1 } = body;
+
+    if (!product_code) {
+      throw new HttpException('product_code is required', 400);
+    }
+
+    const client = await this.pg.connect();
+    try {
+      await client.query('BEGIN');
+
+      // 1. Verificar que el producto existe y tiene stock
+      const productResult = await client.query(
+        `SELECT code, name, category, price, stock FROM products WHERE code = $1 FOR UPDATE`,
+        [product_code]
+      );
+
+      if (productResult.rows.length === 0) {
+        throw new HttpException('Product not found', 404);
+      }
+
+      const product = productResult.rows[0];
+
+      if (product.stock < quantity) {
+        throw new HttpException(`Insufficient stock. Available: ${product.stock}`, 400);
+      }
+
+      // 2. Verificar si tiene suscripción activa para aplicar descuento
+      const subResult = await client.query(
+        `SELECT status, current_period_end FROM subscriptions 
+         WHERE tenant_id = $1 AND current_period_end > NOW() 
+         ORDER BY current_period_end DESC LIMIT 1`,
+        [tenant_id]
+      );
+
+      const hasActiveSubscription = subResult.rows.length > 0;
+      const discount = hasActiveSubscription ? 0.30 : 0; // 30% descuento si tiene suscripción
+      const unitPrice = parseFloat(product.price);
+      const totalPrice = unitPrice * quantity * (1 - discount);
+
+      // 3. Verificar saldo en billetera
+      const tenantResult = await client.query(
+        `SELECT wallet_balance FROM tenants WHERE id = $1 FOR UPDATE`,
+        [tenant_id]
+      );
+
+      if (tenantResult.rows.length === 0) {
+        throw new HttpException('Tenant not found', 404);
+      }
+
+      const currentBalance = parseFloat(tenantResult.rows[0].wallet_balance || '0');
+
+      if (currentBalance < totalPrice) {
+        throw new HttpException(
+          `Insufficient balance. Required: $${totalPrice.toFixed(2)}, Available: $${currentBalance.toFixed(2)}`,
+          400
+        );
+      }
+
+      // 4. Descontar de la billetera
+      const newBalance = currentBalance - totalPrice;
+      await client.query(
+        `UPDATE tenants SET wallet_balance = $1 WHERE id = $2`,
+        [newBalance, tenant_id]
+      );
+
+      // 5. Crear servicios (uno por cada quantity)
+      const services = [];
+      for (let i = 0; i < quantity; i++) {
+        // Generar credenciales simples (esto debería venir de un sistema de credenciales real)
+        const credentials = this.generateCredentials(product.name);
+        
+        const serviceResult = await client.query(
+          `INSERT INTO services (tenant_id, product_code, credentials, status, expires_at)
+           VALUES ($1, $2, $3, 'active', NOW() + INTERVAL '30 days')
+           RETURNING id, product_code, credentials, status, expires_at, created_at`,
+          [tenant_id, product_code, JSON.stringify(credentials)]
+        );
+
+        services.push(serviceResult.rows[0]);
+      }
+
+      // 6. Actualizar stock del producto
+      await client.query(
+        `UPDATE products SET stock = stock - $1 WHERE code = $2`,
+        [quantity, product_code]
+      );
+
+      // 7. Registrar la transacción en billing_events
+      await client.query(
+        `INSERT INTO billing_events (tenant_id, event_type, source, payload)
+         VALUES ($1, 'purchase', 'WALLET', $2)`,
+        [
+          tenant_id,
+          JSON.stringify({
+            product_code,
+            product_name: product.name,
+            quantity,
+            unit_price: unitPrice,
+            total_price: totalPrice,
+            discount_applied: discount,
+            service_ids: services.map(s => s.id)
+          })
+        ]
+      );
+
+      await client.query('COMMIT');
+
+      return res.json({
+        success: true,
+        services,
+        purchase: {
+          product_code,
+          product_name: product.name,
+          quantity,
+          unit_price: unitPrice,
+          total_price: totalPrice,
+          discount_applied: discount * 100, // Porcentaje
+          new_balance: newBalance
+        }
+      });
+    } catch (error) {
+      await client.query('ROLLBACK');
+      console.error('Error purchasing product:', error);
+      if (error instanceof HttpException) {
+        throw error;
+      }
+      throw new HttpException('Error processing purchase', 500);
+    } finally {
+      client.release();
+    }
+  }
+
+  private generateCredentials(productName: string): { email: string; password: string } {
+    // Generar credenciales temporales
+    // En producción, esto debería obtener credenciales reales de un pool
+    const randomSuffix = Math.random().toString(36).substring(2, 8);
+    return {
+      email: `user_${randomSuffix}@temp.skyplay.com`,
+      password: `temp_${randomSuffix}`
+    };
+  }
+
+  // Endpoint para crear checkout de Stripe para compra de producto del catálogo
+  @Post('checkout')
+  @UseGuards(AuthGuard)
+  async createProductCheckout(
+    @Body() body: { product_code: string; quantity?: number },
+    @Req() req: Request,
+    @Res() res: Response
+  ) {
+    const { tenant_id } = (req as any).user as JWTPayload;
+    const { product_code, quantity = 1 } = body;
+
+    if (!product_code) {
+      throw new HttpException('product_code is required', 400);
+    }
+
+    try {
+      // 1. Verificar que el producto existe
+      const productResult = await this.pg.query(
+        `SELECT code, name, category, price, stock FROM products WHERE code = $1`,
+        [product_code]
+      );
+
+      if (productResult.rows.length === 0) {
+        throw new HttpException('Product not found', 404);
+      }
+
+      const product = productResult.rows[0];
+
+      if (product.stock < quantity) {
+        throw new HttpException(`Insufficient stock. Available: ${product.stock}`, 400);
+      }
+
+      // 2. Verificar si tiene suscripción activa para aplicar descuento
+      const subResult = await this.pg.query(
+        `SELECT status, current_period_end FROM subscriptions 
+         WHERE tenant_id = $1 AND current_period_end > NOW() 
+         ORDER BY current_period_end DESC LIMIT 1`,
+        [tenant_id]
+      );
+
+      const hasActiveSubscription = subResult.rows.length > 0;
+      const discount = hasActiveSubscription ? 0.30 : 0;
+      const unitPrice = parseFloat(product.price);
+      const totalPrice = unitPrice * quantity * (1 - discount);
+
+      // 3. Generar order number único
+      const orderNumber = this.generateOrderNumber();
+
+      // 4. Crear registro en billing_events (pendiente de pago)
+      const eventResult = await this.pg.query(
+        `INSERT INTO billing_events (tenant_id, event_type, source, order_number, payload)
+         VALUES ($1, 'purchase_pending', 'STRIPE', $2, $3)
+         RETURNING id`,
+        [
+          tenant_id,
+          orderNumber,
+          JSON.stringify({
+            product_code,
+            product_name: product.name,
+            quantity,
+            unit_price: unitPrice,
+            total_price: totalPrice,
+            discount_applied: discount,
+            status: 'pending'
+          })
+        ]
+      );
+
+      const orderId = eventResult.rows[0].id;
+
+      // 5. Crear Stripe Checkout Session
+      const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+      const session = await stripe.checkout.sessions.create({
+        line_items: [{
+          price_data: {
+            currency: 'usd',
+            product_data: { 
+              name: product.name,
+              description: hasActiveSubscription 
+                ? `${product.category} - Con descuento preferencial (-30%)`
+                : `${product.category} - Servicio digital`
+            },
+            unit_amount: Math.round(totalPrice * 100)
+          },
+          quantity: 1
+        }],
+        mode: 'payment',
+        metadata: {
+          order_id: orderId.toString(),
+          order_number: orderNumber,
+          product_code,
+          tenant_id: tenant_id.toString(),
+          quantity: quantity.toString(),
+          order_type: 'catalog_purchase'
+        },
+        success_url: `${process.env.FRONTEND_URL || 'http://localhost:3001'}/?payment=success&order=${orderNumber}`,
+        cancel_url: `${process.env.FRONTEND_URL || 'http://localhost:3001'}/?payment=cancel`
+      });
+
+      return res.json({ 
+        checkout_url: session.url, 
+        order_number: orderNumber,
+        order_id: orderId
+      });
+    } catch (error) {
+      console.error('Error creating checkout:', error);
+      if (error instanceof HttpException) {
+        throw error;
+      }
+      throw new HttpException('Error creating checkout', 500);
+    }
+  }
+
+  // Endpoint para recargar billetera (solo con Stripe/Tarjetas por ahora)
+  @Post('wallet/recharge')
+  @UseGuards(AuthGuard)
+  async rechargeWallet(
+    @Body() body: { amount: number; method: 'CARD' | 'SINPE' | 'BINANCE' },
+    @Req() req: Request,
+    @Res() res: Response
+  ) {
+    const { tenant_id } = (req as any).user as JWTPayload;
+    const { amount, method } = body;
+
+    if (!amount || amount < 1) {
+      throw new HttpException('Amount must be at least $1', 400);
+    }
+
+    if (!method || !['CARD', 'SINPE', 'BINANCE'].includes(method)) {
+      throw new HttpException('Invalid payment method', 400);
+    }
+
+    try {
+      // Generar order number único
+      const orderNumber = this.generateOrderNumber();
+
+      // Crear registro en billing_events (pendiente de pago)
+      const eventResult = await this.pg.query(
+        `INSERT INTO billing_events (tenant_id, event_type, source, order_number, payload)
+         VALUES ($1, 'wallet_recharge_pending', $2, $3, $4)
+         RETURNING id`,
+        [
+          tenant_id,
+          method,
+          orderNumber,
+          JSON.stringify({
+            amount,
+            method,
+            status: 'pending'
+          })
+        ]
+      );
+
+      const orderId = eventResult.rows[0].id;
+
+      // Para SINPE, devolver instrucciones
+      if (method === 'SINPE') {
+        return res.json({
+          method: 'SINPE',
+          order_number: orderNumber,
+          order_id: orderId,
+          instructions: {
+            phone: '8888-8888',
+            amount: amount,
+            message: `Recarga ${orderNumber}`
+          }
+        });
+      }
+
+      // Para Binance, devolver instrucciones (placeholder)
+      if (method === 'BINANCE') {
+        return res.json({
+          method: 'BINANCE',
+          order_number: orderNumber,
+          order_id: orderId,
+          instructions: {
+            message: 'Binance Pay integration pending'
+          }
+        });
+      }
+
+      // Para tarjetas (CARD), crear Stripe Checkout
+      const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+      
+      // Calcular bono según el monto
+      let bonus = 0;
+      if (amount >= 100) bonus = 0.40;
+      else if (amount >= 50) bonus = 0.30;
+      else if (amount >= 25) bonus = 0.20;
+      else if (amount >= 10) bonus = 0.10;
+      
+      const totalWithBonus = amount * (1 + bonus);
+
+      const session = await stripe.checkout.sessions.create({
+        line_items: [{
+          price_data: {
+            currency: 'usd',
+            product_data: { 
+              name: 'Recarga de Billetera',
+              description: bonus > 0 
+                ? `$${amount} + ${(bonus * 100)}% bono = $${totalWithBonus.toFixed(2)}`
+                : `Recarga de $${amount}`
+            },
+            unit_amount: Math.round(amount * 100)
+          },
+          quantity: 1
+        }],
+        mode: 'payment',
+        metadata: {
+          order_id: orderId.toString(),
+          order_number: orderNumber,
+          tenant_id: tenant_id.toString(),
+          amount: amount.toString(),
+          bonus_percentage: (bonus * 100).toString(),
+          total_with_bonus: totalWithBonus.toString(),
+          order_type: 'wallet_recharge'
+        },
+        success_url: `${process.env.FRONTEND_URL || 'http://localhost:3001'}/?payment=success&order=${orderNumber}&type=recharge`,
+        cancel_url: `${process.env.FRONTEND_URL || 'http://localhost:3001'}/?payment=cancel`
+      });
+
+      return res.json({ 
+        checkout_url: session.url, 
+        order_number: orderNumber,
+        order_id: orderId,
+        amount,
+        bonus_percentage: bonus * 100,
+        total_with_bonus: totalWithBonus
+      });
+    } catch (error) {
+      console.error('Error creating wallet recharge:', error);
+      if (error instanceof HttpException) {
+        throw error;
+      }
+      throw new HttpException('Error creating wallet recharge', 500);
+    }
+  }
+
   @Post(':id/renew')
   @UseGuards(AuthGuard) // Proteger este endpoint
 async renew(@Param('id') serviceId: string, @Req() req: Request, @Res() res: Response) {

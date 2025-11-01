@@ -24,6 +24,10 @@ export interface PriceMap {
   [key: string]: number;
 }
 
+export interface ProductCodeMap {
+  [key: string]: string; // key: "serviceName|planName" -> value: product_code
+}
+
 /**
  * Extrae el nombre base del servicio desde el nombre del producto
  */
@@ -113,6 +117,22 @@ export function createPriceMap(products: Product[]): PriceMap {
   });
 
   return priceMap;
+}
+
+/**
+ * Crea un mapa de códigos de producto
+ */
+export function createProductCodeMap(products: Product[]): ProductCodeMap {
+  const codeMap: ProductCodeMap = {};
+
+  products.forEach(product => {
+    const serviceName = extractServiceName(product.name);
+    const planName = extractPlanName(product.name, serviceName);
+    const key = `${serviceName}|${planName}`;
+    codeMap[key] = product.code;
+  });
+
+  return codeMap;
 }
 
 /**

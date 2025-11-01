@@ -3,7 +3,7 @@ import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { usePayment } from "@/components/PaymentContext";
 import { getAllProducts, logout } from "@/lib/api";
-import { groupProductsByService, createPriceMap, getBrandColors, type CatalogService, type PriceMap } from "@/lib/catalog-utils";
+import { groupProductsByService, createPriceMap, createProductCodeMap, getBrandColors, type CatalogService, type PriceMap, type ProductCodeMap } from "@/lib/catalog-utils";
 
 export default function Home() {
   const [query, setQuery] = useState("");
@@ -11,6 +11,7 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
   const [catalogData, setCatalogData] = useState<CatalogService[]>([]);
   const [priceMap, setPriceMap] = useState<PriceMap>({});
+  const [productCodeMap, setProductCodeMap] = useState<ProductCodeMap>({});
   const router = useRouter();
   const { openPayment, walletBalance, refreshWallet } = usePayment();
 
@@ -27,9 +28,11 @@ export default function Home() {
       if (productsResult.ok && productsResult.data) {
         const services = groupProductsByService(productsResult.data);
         const prices = createPriceMap(productsResult.data);
+        const codes = createProductCodeMap(productsResult.data);
         console.log(`✅ Catálogo cargado: ${services.length} servicios, ${productsResult.data.length} productos`);
         setCatalogData(services);
         setPriceMap(prices);
+        setProductCodeMap(codes);
       } else {
         console.error('❌ Error cargando catálogo:', productsResult);
       }
@@ -49,7 +52,12 @@ export default function Home() {
   const handleBuy = (svc: string, plan: string) => {
     const key = `${svc}|${plan}`;
     const price = priceMap[key] || 0;
-    openPayment({ service: svc, plan, price });
+    const productCode = productCodeMap[key];
+    if (!productCode) {
+      console.error('❌ Product code not found for:', key);
+      return;
+    }
+    openPayment({ service: svc, plan, price, productCode });
   };
 
   const filtered = catalogData.filter((svc) =>
