@@ -103,12 +103,33 @@ export async function resetPasswordWithTotp(data: ResetPasswordData): Promise<Ap
 }
 
 /**
- * Logout
+ * Logout - Elimina cookie de sesión
  */
 export async function logout(): Promise<ApiResponse<{ message: string }>> {
-  return apiFetch('/auth/logout', {
-    method: 'POST',
-  });
+  // Eliminar todas las variantes de la cookie
+  if (typeof window !== 'undefined') {
+    // Eliminar para localhost
+    document.cookie = 'sky_sid=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
+    document.cookie = 'sky_sid=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; domain=localhost;';
+    document.cookie = 'sky_sid=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; domain=.localhost;';
+    
+    // Eliminar para 127.0.0.1
+    document.cookie = 'sky_sid=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; domain=127.0.0.1;';
+    
+    // Forzar recarga para limpiar estado
+    setTimeout(() => {
+      window.location.href = '/login';
+    }, 100);
+  }
+  
+  // Intentar llamar al backend si existe el endpoint
+  try {
+    await apiFetch('/auth/logout', { method: 'POST' });
+  } catch (error) {
+    console.log('Backend logout endpoint no disponible');
+  }
+  
+  return { ok: true, data: { message: 'Sesión cerrada' } };
 }
 
 // ============================================================================

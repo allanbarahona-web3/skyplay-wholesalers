@@ -1,6 +1,7 @@
 "use client";
 import React, { useState } from "react";
 import { useRouter } from "next/navigation";
+import { loginWithOtp, setupTotp, resetPasswordWithTotp } from "@/lib/api";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -37,17 +38,31 @@ export default function LoginPage() {
     }
   };
 
-  // Login handler
+  // Login handler - INTEGRADO CON BACKEND
   const handleLogin = async () => {
     if (!user) return toast("Ingresa tu correo/usuario");
     if (!pass) return toast("Ingresa tu contraseña");
     if (otp.join("").length < 6) return toast("OTP requerido (6 dígitos)");
-    // Aquí iría la llamada real al backend
-    // Simulación:
-    if (user === "demo" && pass === "demo" && otp.join("") === "123456") {
-      router.push("/panel");
-    } else {
-      toast("Credenciales inválidas");
+    
+    setError("");
+    
+    try {
+      const result = await loginWithOtp({
+        email: user,
+        password: pass,
+        otp: otp.join(""),
+      });
+
+      if (result.ok && result.data) {
+        toast("✅ Inicio de sesión exitoso", true);
+        setTimeout(() => router.push("/panel"), 500);
+      } else {
+        toast(result.error || "Credenciales inválidas");
+        setError(result.error || "Error al iniciar sesión");
+      }
+    } catch (err) {
+      toast("Error de conexión");
+      setError("Error de conexión con el servidor");
     }
   };
 

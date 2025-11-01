@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { usePayment } from "@/components/PaymentContext";
-import { getAllProducts } from "@/lib/api";
+import { getAllProducts, logout } from "@/lib/api";
 import { groupProductsByService, createPriceMap, getBrandColors, type CatalogService, type PriceMap } from "@/lib/catalog-utils";
 
 export default function Home() {
@@ -61,11 +61,9 @@ export default function Home() {
     router.push("/panel");
   };
 
-  const handleLogout = () => {
-    if (typeof window !== "undefined") {
-      document.cookie = "sky_sid=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
-    }
-    router.push("/login");
+  const handleLogout = async () => {
+    await logout();
+    // No necesitamos router.push porque logout() ya hace window.location.href
   };
 
   const brandColors = getBrandColors();
