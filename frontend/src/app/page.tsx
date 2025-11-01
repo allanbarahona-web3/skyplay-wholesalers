@@ -1,6 +1,7 @@
 "use client";
 import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { usePayment } from "@/components/PaymentContext";
 
 // PRICE object - Todos los precios del catálogo
 const PRICE: Record<string, number> = {
@@ -98,20 +99,11 @@ const wallet = {
 export default function Home() {
   const [query, setQuery] = useState("");
   const [expandedRows, setExpandedRows] = useState<string[]>(["Recarga de Créditos (Billetera)"]); // Créditos expandido por defecto
-  const [walletBalance, setWalletBalance] = useState(0);
-  const [modalOpen, setModalOpen] = useState(false);
-  const [selectedTab, setSelectedTab] = useState<'pay' | 'wallet'>('pay');
-  const [selected, setSelected] = useState<{ svc: string; plan: string; price: number; method: string | null }>({
-    svc: '',
-    plan: '',
-    price: 0,
-    method: null
-  });
-  const [rechargeMethod, setRechargeMethod] = useState<string | null>(null);
   const router = useRouter();
+  const { openPayment, walletBalance, refreshWallet } = usePayment();
 
   useEffect(() => {
-    setWalletBalance(wallet.get());
+    refreshWallet();
   }, []);
 
   const toggleRow = (svc: string) => {
@@ -123,34 +115,7 @@ export default function Home() {
   const openModalFor = (svc: string, plan: string) => {
     const key = `${svc}|${plan}`;
     const price = PRICE[key] || 0;
-    setSelected({ svc, plan, price, method: null });
-    setModalOpen(true);
-  };
-
-  const closeModal = () => {
-    setModalOpen(false);
-    setSelected({ svc: '', plan: '', price: 0, method: null });
-  };
-
-  const handlePayment = () => {
-    if (!selected.method) {
-      alert('Elige un método de pago');
-      return;
-    }
-    if (selected.method === 'WALLET') {
-      const bal = wallet.get();
-      if (bal < selected.price) {
-        alert('Saldo insuficiente en billetera');
-        return;
-      }
-      wallet.set(bal - selected.price);
-      setWalletBalance(wallet.get());
-      alert(`Pago con saldo realizado: $${selected.price.toFixed(2)}`);
-      closeModal();
-    } else {
-      alert(`Procesando pago ${selected.method} por $${selected.price.toFixed(2)} de ${selected.svc} · ${selected.plan}`);
-      closeModal();
-    }
+    openPayment({ service: svc, plan, price });
   };
 
   const filtered = DATA.filter((svc) =>
@@ -311,146 +276,6 @@ export default function Home() {
           <p>© {new Date().getFullYear()} Skyplay · Catálogo Mayorista. Soporte por WhatsApp y panel B2B bajo solicitud.</p>
         </div>
       </footer>
-
-      {/* Modal de Pago / Billetera */}
-      {modalOpen && (
-        <div className="modal open">
-          <div className="modal-content">
-            <div className="modal-head">
-              <div>
-                <h2 className="modal-title">Comprar</h2>
-                <p className="modal-subtitle">{selected.svc} · {selected.plan}</p>
-              </div>
-              <button className="modal-close-btn" onClick={closeModal}>✕</button>
-            </div>
-
-            <div className="modal-tabs">
-              <button 
-                className={`modal-tab${selectedTab === 'pay' ? ' active' : ''}`} 
-                onClick={() => setSelectedTab('pay')}
-              >
-                Pagar ahora
-              </button>
-              <button 
-                className={`modal-tab${selectedTab === 'wallet' ? ' active' : ''}`} 
-                onClick={() => setSelectedTab('wallet')}
-              >
-                Billetera
-              </button>
-            </div>
-
-            {selectedTab === 'pay' && (
-              <div id="tab-pay" className="modal-tab-content">
-                <h3 className="modal-section-title">Método de pago</h3>
-                <div className="payment-grid">
-                  <div 
-                    className={`payment-option${selected.method === 'SINPE' ? ' selected' : ''}`}
-                    onClick={() => setSelected({...selected, method: 'SINPE'})}
-                  >
-                    <div className="payment-icon">📱</div>
-                    <div className="payment-name">Sinpe Móvil</div>
-                  </div>
-                  <div 
-                    className={`payment-option${selected.method === 'CARD' ? ' selected' : ''}`}
-                    onClick={() => setSelected({...selected, method: 'CARD'})}
-                  >
-                    <div className="payment-icon">💳</div>
-                    <div className="payment-name">Tarjetas</div>
-                  </div>
-                  <div 
-                    className={`payment-option${selected.method === 'BINANCE' ? ' selected' : ''}`}
-                    onClick={() => setSelected({...selected, method: 'BINANCE'})}
-                  >
-                    <div className="payment-icon">🟡</div>
-                    <div className="payment-name">Binance Pay</div>
-                  </div>
-                  <div 
-                    className={`payment-option${selected.method === 'PAYPAL' ? ' selected' : ''}`}
-                    onClick={() => setSelected({...selected, method: 'PAYPAL'})}
-                  >
-                    <div className="payment-icon">🅿️</div>
-                    <div className="payment-name">PayPal</div>
-                  </div>
-                  <div 
-                    className={`payment-option payment-wallet${selected.method === 'WALLET' ? ' selected' : ''}`}
-                    onClick={() => setSelected({...selected, method: 'WALLET'})}
-                  >
-                    <div className="payment-icon">💰</div>
-                    <div className="payment-name">Billetera</div>
-                    <div className="payment-balance">${walletBalance.toFixed(2)}</div>
-                  </div>
-                </div>
-                <div className="modal-footer">
-                  <div className="price-display">
-                    <span className="price-label">Total</span>
-                    <span className="price-amount">${selected.price.toFixed(2)}</span>
-                  </div>
-                  <button className="btn-pay" onClick={handlePayment}>Pagar</button>
-                </div>
-              </div>
-            )}
-
-            {selectedTab === 'wallet' && (
-              <div id="tab-wallet" className="modal-tab-content">
-                <div className="wallet-balance-card">
-                  <div className="wallet-label">Saldo disponible</div>
-                  <div className="wallet-amount">${walletBalance.toFixed(2)}</div>
-                </div>
-                
-                <div className="wallet-section">
-                  <h3 className="modal-section-title">Recargar billetera</h3>
-                  <input 
-                    type="number" 
-                    className="modal-input" 
-                    placeholder="Monto en USD" 
-                    min="1"
-                  />
-                  <div className="payment-grid compact">
-                    <div 
-                      className={`payment-option-compact${rechargeMethod === 'SINPE' ? ' selected' : ''}`}
-                      onClick={() => setRechargeMethod('SINPE')}
-                    >
-                      📱 SINPE
-                    </div>
-                    <div 
-                      className={`payment-option-compact${rechargeMethod === 'CARD' ? ' selected' : ''}`}
-                      onClick={() => setRechargeMethod('CARD')}
-                    >
-                      💳 Tarjetas
-                    </div>
-                    <div 
-                      className={`payment-option-compact${rechargeMethod === 'BINANCE' ? ' selected' : ''}`}
-                      onClick={() => setRechargeMethod('BINANCE')}
-                    >
-                      🟡 Binance
-                    </div>
-                    <div 
-                      className={`payment-option-compact${rechargeMethod === 'PAYPAL' ? ' selected' : ''}`}
-                      onClick={() => setRechargeMethod('PAYPAL')}
-                    >
-                      🅿️ PayPal
-                    </div>
-                  </div>
-                  <button className={`btn-secondary-full${rechargeMethod ? ' active' : ''}`}>
-                    Recargar
-                  </button>
-                </div>
-                
-                <div className="wallet-section">
-                  <h3 className="modal-section-title">Pagar con saldo</h3>
-                  <div className="modal-footer">
-                    <div className="price-display">
-                      <span className="price-label">Total</span>
-                      <span className="price-amount">${selected.price.toFixed(2)}</span>
-                    </div>
-                    <button className="btn-pay" onClick={handlePayment}>Pagar</button>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
     </div>
   );
 }

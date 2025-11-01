@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
+import { PaymentProvider } from "@/components/PaymentContext";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -27,7 +28,9 @@ export default function RootLayout({
       <body
     className={`${geistSans.variable} ${geistMono.variable} antialiased bg-[var(--bg)] min-h-screen layout-bg`}
       >
-        {children}
+        <PaymentProvider>
+          {children}
+        </PaymentProvider>
       </body>
     </html>
   );

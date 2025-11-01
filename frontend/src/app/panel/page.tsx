@@ -2,6 +2,7 @@
 "use client";
 import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { usePayment } from "@/components/PaymentContext";
 
 // Tipos básicos
 type Service = {
@@ -83,9 +84,7 @@ export default function PanelMayoristaPage() {
   const [period, setPeriod] = useState<string>("all");
   const [search, setSearch] = useState<string>("");
   const [searchError, setSearchError] = useState<string>("");
-  const [modalRenewOpen, setModalRenewOpen] = useState(false);
   const [modalSubscriptionOpen, setModalSubscriptionOpen] = useState(false);
-  const [selectedService, setSelectedService] = useState<Service | null>(null);
   const [selectedPlan, setSelectedPlan] = useState<string | null>(null);
   const [selectedAmount, setSelectedAmount] = useState<number>(0);
   const [toastMsg, setToastMsg] = useState<string>("");
@@ -156,14 +155,15 @@ export default function PanelMayoristaPage() {
   }, [toastMsg]);
 
   // Acciones
-  const handleRenew = (service: Service) => {
-    setSelectedService(service);
-    setModalRenewOpen(true);
-  };
+  const { openPayment } = usePayment();
 
-  const handleCloseRenew = () => {
-    setModalRenewOpen(false);
-    setSelectedService(null);
+  const handleRenew = (service: Service) => {
+    // Usar el modal global de pagos
+    openPayment({
+      service: service.product_name,
+      plan: 'Renovación 1 mes',
+      price: 7.95 // Precio con descuento
+    });
   };
 
   const handleSubscription = () => {
@@ -437,27 +437,6 @@ export default function PanelMayoristaPage() {
           </div>
         </section>
       </div>
-
-      {/* Modal Renovación */}
-      <Modal open={modalRenewOpen} onClose={handleCloseRenew}>
-        {selectedService && (
-          <>
-            <h2>Renovar Servicio</h2>
-            <p className="muted">{selectedService.product_name}</p>
-            <div className="renew-box">
-              <span>Precio de renovación:</span>
-              <span className="renew-price">$9.95</span>
-            </div>
-            <h3 className="renew-title">Selecciona método de pago:</h3>
-            <div className="renew-paygrid">
-              <button className="btn" onClick={() => setToastMsg("Redirigiendo a Stripe...")}>💳 Tarjetas</button>
-              <button className="btn pay-binance" onClick={() => setToastMsg("Binance Pay en desarrollo")}>Binance Pay</button>
-              <button className="btn pay-sinpe" onClick={() => setToastMsg("SINPE en desarrollo")}>SINPE</button>
-              <button className="btn pay-wallet" onClick={() => setToastMsg("Billetera en desarrollo")}>Billetera</button>
-            </div>
-          </>
-        )}
-      </Modal>
 
       {/* Modal Suscripción Preferencial */}
       <Modal open={modalSubscriptionOpen} onClose={handleCloseSubscription}>
