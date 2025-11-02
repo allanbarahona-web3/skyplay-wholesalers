@@ -4,6 +4,7 @@ import { AppModule } from './app.module';
 import * as cookieParser from 'cookie-parser';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { join } from 'path';
+import { generalRateLimiter } from './middleware/rate-limit.middleware';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
@@ -11,6 +12,10 @@ async function bootstrap() {
   });
   
   app.use(cookieParser());
+  
+  // Rate limiting global (protección DDoS básica)
+  app.use(generalRateLimiter);
+  
   app.setGlobalPrefix('api');
   app.useStaticAssets(join(__dirname, '..', '..', 'app', 'public'));
   

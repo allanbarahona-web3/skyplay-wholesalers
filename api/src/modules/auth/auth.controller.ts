@@ -1,11 +1,12 @@
 // src/modules/auth/auth.controller.ts
-import { Controller, Get, Post, Body, Res, Req, HttpException, Inject, RawBodyRequest } from '@nestjs/common';
+import { Controller, Get, Post, Body, Res, Req, HttpException, Inject, RawBodyRequest, UseInterceptors } from '@nestjs/common';
 import { Response, Request } from 'express';
 import { Pool } from 'pg';
 import * as jwt from 'jsonwebtoken';
 import * as bcrypt from 'bcrypt';
 import Stripe from 'stripe';
 import { EmailService } from '../email/email.service';
+import { UseLoginRateLimit, UseStrictRateLimit } from '../../middleware/rate-limit.interceptor';
 
 
 type JWTPayload = { id: number; tenant_id: number|null; role: string };
@@ -30,6 +31,7 @@ export class AuthController {
   }
 
   @Post('login-otp')
+  @UseLoginRateLimit()
   async login(@Body() body: any, @Res() res: Response) {
     const { email, password, otp } = body || {};
     
@@ -98,6 +100,7 @@ export class AuthController {
   }
 
   @Post('setup-totp')
+  @UseStrictRateLimit()
   async setupTotp(@Body() body: any, @Res() res: Response) {
     const { email } = body;
     if (!email) throw new HttpException('Email requerido', 400);
@@ -131,6 +134,7 @@ export class AuthController {
   }
 
   @Post('reset-password-totp')
+  @UseStrictRateLimit()
   async resetPasswordTotp(@Body() body: any) {
     const { email, totp, newPassword } = body;
 
