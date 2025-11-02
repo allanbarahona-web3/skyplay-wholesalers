@@ -3,11 +3,15 @@ import { Controller, Get, Post, Param, Body, Res, Req, HttpException, Inject, Us
 import { Response, Request } from 'express';
 import { Pool } from 'pg';
 import { AuthGuard, JWTPayload } from '../../guards/auth.guard';
+import { EmailService } from '../email/email.service';
 
 
 @Controller('services')
 export class ServicesController {
-  constructor(@Inject('PG_POOL') private readonly pg: Pool) {}
+  constructor(
+    @Inject('PG_POOL') private readonly pg: Pool,
+    private readonly emailService: EmailService
+  ) {}
   
   // Endpoint público para obtener catálogo completo (SIN GUARD - es público)
   @Get('catalog')
@@ -173,6 +177,28 @@ export class ServicesController {
       );
 
       await client.query('COMMIT');
+
+      // Enviar email con credenciales (async, no bloqueante)
+      const userEmailResult = await this.pg.query(
+        `SELECT u.email, t.name as tenant_name 
+         FROM users u 
+         JOIN tenants t ON u.tenant_id = t.id 
+         WHERE u.tenant_id = $1 
+         LIMIT 1`,
+        [tenant_id]
+      );
+      if (userEmailResult.rows.length > 0 && userEmailResult.rows[0].email) {
+        const user = userEmailResult.rows[0];
+        this.emailService.sendCredentialsEmail({
+          to: user.email,
+          tenantName: user.tenant_name,
+          productName: product.name,
+          credentials: services.map(s => s.credentials),
+          expiresAt: services[0].expires_at,
+          totalPrice,
+          discountApplied: discount > 0 ? Math.round(discount * 100) : undefined,
+        }).catch(err => console.error('Error sending email:', err));
+      }
 
       return res.json({
         success: true,

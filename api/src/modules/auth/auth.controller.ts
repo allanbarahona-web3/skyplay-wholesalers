@@ -5,13 +5,17 @@ import { Pool } from 'pg';
 import * as jwt from 'jsonwebtoken';
 import * as bcrypt from 'bcrypt';
 import Stripe from 'stripe';
+import { EmailService } from '../email/email.service';
 
 
 type JWTPayload = { id: number; tenant_id: number|null; role: string };
 
 @Controller('auth')
 export class AuthController {
-  constructor(@Inject('PG_POOL') private readonly pg: Pool) {}
+  constructor(
+    @Inject('PG_POOL') private readonly pg: Pool,
+    private readonly emailService: EmailService
+  ) {}
   
   private stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
 
@@ -291,6 +295,54 @@ export class AuthController {
       );
 
       console.log(`✅ Catalog purchase completed: ${quantity}x ${productCode} for tenant ${tenantId}`);
+      
+      // 5. Enviar email con credenciales (async, no bloqueante)
+      try {
+        const userResult = await this.pg.query(
+          `SELECT u.email, t.name as tenant_name 
+           FROM users u 
+           JOIN tenants t ON u.tenant_id = t.id 
+           WHERE u.tenant_id = $1 
+           LIMIT 1`,
+          [tenantId]
+        );
+        
+        if (userResult.rows.length > 0 && userResult.rows[0].email) {
+          const user = userResult.rows[0];
+          
+          // Obtener credenciales del servicio creado
+          const servicesResult = await this.pg.query(
+            `SELECT s.id, s.expires_at, c.email, c.password, c.profile_name, c.pin, p.name as product_name
+             FROM services s
+             JOIN credentials c ON s.credential_id = c.id
+             JOIN products p ON s.product_code = p.code
+             WHERE s.tenant_id = $1 AND s.product_code = $2
+             ORDER BY s.created_at DESC
+             LIMIT $3`,
+            [tenantId, productCode, quantity]
+          );
+          
+          if (servicesResult.rows.length > 0) {
+            const service = servicesResult.rows[0];
+            await this.emailService.sendCredentialsEmail({
+              to: user.email,
+              tenantName: user.tenant_name,
+              productName: service.product_name,
+              credentials: servicesResult.rows.map(s => ({
+                email: s.email,
+                password: s.password,
+                profile_name: s.profile_name,
+                pin: s.pin,
+              })),
+              expiresAt: service.expires_at,
+              orderNumber: session.metadata?.order_number,
+            });
+            console.log(`📧 Email sent to ${user.email} for order ${orderId}`);
+          }
+        }
+      } catch (emailErr: any) {
+        console.error('Error sending email after catalog purchase:', emailErr.message);
+      }
     } catch (err: any) {
       console.error('Error processing catalog purchase:', err.message);
     }

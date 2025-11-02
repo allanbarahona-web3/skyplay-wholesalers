@@ -1,9 +1,13 @@
 import { Injectable, Inject } from '@nestjs/common';
 import { Pool } from 'pg';
+import { EmailService } from '../email/email.service';
 
 @Injectable()
 export class AdminService {
-  constructor(@Inject('PG_POOL') private readonly pg: Pool) {}
+  constructor(
+    @Inject('PG_POOL') private readonly pg: Pool,
+    private readonly emailService: EmailService
+  ) {}
 
   async getTenants() {
     const { rows } = await this.pg.query(
@@ -192,6 +196,48 @@ export class AdminService {
       await client.query('COMMIT');
 
       console.log(`✅ SINPE order confirmed: ${orderId} for tenant ${tenant_id}`);
+      
+      // 5. Enviar email con credenciales (async, no bloqueante)
+      try {
+        const userResult = await this.pg.query(
+          `SELECT u.email, t.name as tenant_name 
+           FROM users u 
+           JOIN tenants t ON u.tenant_id = t.id 
+           WHERE u.tenant_id = $1 
+           LIMIT 1`,
+          [tenant_id]
+        );
+        
+        if (userResult.rows.length > 0 && userResult.rows[0].email) {
+          const user = userResult.rows[0];
+          
+          // Obtener nombre del producto
+          const productResult = await this.pg.query(
+            `SELECT name FROM products WHERE code = $1`,
+            [product_code]
+          );
+          
+          const productName = productResult.rows[0]?.name || product_code;
+          
+          // Obtener order_number del payload
+          const orderNumber = payload.order_number || `SINPE-${orderId}`;
+          
+          await this.emailService.sendCredentialsEmail({
+            to: user.email,
+            tenantName: user.tenant_name,
+            productName,
+            credentials: services.map(s => s.credential),
+            expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(), // 30 días
+            orderNumber,
+            totalPrice: payload.total_price,
+            discountApplied: payload.discount_applied ? Math.round(payload.discount_applied * 100) : undefined,
+          });
+          
+          console.log(`📧 Email sent to ${user.email} for SINPE order ${orderId}`);
+        }
+      } catch (emailErr: any) {
+        console.error('Error sending email after SINPE confirmation:', emailErr.message);
+      }
       
       return { 
         success: true, 
