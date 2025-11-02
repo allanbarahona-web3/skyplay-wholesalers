@@ -4,13 +4,15 @@ import { Response, Request } from 'express';
 import { Pool } from 'pg';
 import { AuthGuard, JWTPayload } from '../../guards/auth.guard';
 import { EmailService } from '../email/email.service';
+import { PayPalService } from '../paypal/paypal.service';
 
 
 @Controller('services')
 export class ServicesController {
   constructor(
     @Inject('PG_POOL') private readonly pg: Pool,
-    private readonly emailService: EmailService
+    private readonly emailService: EmailService,
+    private readonly paypalService: PayPalService
   ) {}
   
   // Endpoint público para obtener catálogo completo (SIN GUARD - es público)
@@ -443,6 +445,118 @@ export class ServicesController {
         throw error;
       }
       throw new HttpException('Error creating SINPE checkout', 500);
+    }
+  }
+
+  // Endpoint para crear checkout de PayPal para compra de producto del catálogo
+  @Post('checkout/paypal')
+  @UseGuards(AuthGuard)
+  async createPayPalProductCheckout(
+    @Body() body: { product_code: string; quantity?: number },
+    @Req() req: Request,
+    @Res() res: Response
+  ) {
+    const { tenant_id } = (req as any).user as JWTPayload;
+    const { product_code, quantity = 1 } = body;
+
+    if (!product_code) {
+      throw new HttpException('product_code is required', 400);
+    }
+
+    // Validar que NO sea un producto de créditos (esos usan /wallet/recharge)
+    if (product_code.startsWith('CREDITS_')) {
+      throw new HttpException('Credit products must use /wallet/recharge endpoint', 400);
+    }
+
+    try {
+      // 1. Verificar que el producto existe
+      const productResult = await this.pg.query(
+        `SELECT code, name, category, price, stock FROM products WHERE code = $1`,
+        [product_code]
+      );
+
+      if (productResult.rows.length === 0) {
+        throw new HttpException('Product not found', 404);
+      }
+
+      const product = productResult.rows[0];
+
+      if (product.stock < quantity) {
+        throw new HttpException(`Insufficient stock. Available: ${product.stock}`, 400);
+      }
+
+      // 2. Verificar si tiene suscripción activa para aplicar descuento
+      const subResult = await this.pg.query(
+        `SELECT status, current_period_end FROM subscriptions 
+         WHERE tenant_id = $1 AND current_period_end > NOW() 
+         ORDER BY current_period_end DESC LIMIT 1`,
+        [tenant_id]
+      );
+
+      const hasActiveSubscription = subResult.rows.length > 0;
+      const discount = hasActiveSubscription ? 0.30 : 0;
+      const unitPrice = parseFloat(product.price);
+      const totalPrice = unitPrice * quantity * (1 - discount);
+
+      // 3. Generar order number único
+      const orderNumber = this.generateOrderNumber();
+
+      // 4. Crear registro pendiente
+      const eventResult = await this.pg.query(
+        `INSERT INTO billing_events (tenant_id, event_type, source, order_number, payload)
+         VALUES ($1, 'purchase_pending', 'PAYPAL', $2, $3)
+         RETURNING id`,
+        [
+          tenant_id,
+          orderNumber,
+          JSON.stringify({
+            product_code,
+            product_name: product.name,
+            quantity,
+            unit_price: unitPrice,
+            total_price: totalPrice,
+            discount_applied: discount,
+            status: 'pending'
+          })
+        ]
+      );
+
+      const orderId = eventResult.rows[0].id;
+
+      // 5. Crear orden de PayPal
+      const paypalOrder = await this.paypalService.createOrder({
+        amount: totalPrice,
+        currency: 'USD',
+        description: `${product.name} x${quantity}${hasActiveSubscription ? ' (Descuento Preferencial -30%)' : ''}`,
+        orderNumber,
+        metadata: {
+          order_id: orderId.toString(),
+          tenant_id: tenant_id.toString(),
+          product_code,
+          quantity: quantity.toString(),
+          order_type: 'catalog_purchase'
+        }
+      });
+
+      return res.json({
+        method: 'PAYPAL',
+        order_id: orderId,
+        order_number: orderNumber,
+        paypal_order_id: paypalOrder.orderId,
+        approval_url: paypalOrder.approvalUrl,
+        amount: totalPrice,
+        product: {
+          name: product.name,
+          code: product_code,
+          quantity
+        }
+      });
+    } catch (error) {
+      console.error('Error creating PayPal checkout:', error);
+      if (error instanceof HttpException) {
+        throw error;
+      }
+      throw new HttpException('Error creating PayPal checkout', 500);
     }
   }
 

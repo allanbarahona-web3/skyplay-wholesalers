@@ -276,6 +276,28 @@ export async function createSinpeProductCheckout(data: PurchaseRequest): Promise
 }
 
 /**
+ * Crear orden PayPal para compra de producto del catálogo
+ */
+export async function createPayPalProductCheckout(data: PurchaseRequest): Promise<ApiResponse<{
+  method: string;
+  order_id: number;
+  order_number: string;
+  paypal_order_id: string;
+  approval_url: string;
+  amount: number;
+  product: {
+    name: string;
+    code: string;
+    quantity: number;
+  };
+}>> {
+  return apiFetch('/services/checkout/paypal', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+/**
  * Recargar billetera con Stripe, SINPE o Binance
  */
 export async function rechargeWallet(data: WalletRechargeRequest): Promise<ApiResponse<WalletRechargeResponse>> {

@@ -2,7 +2,7 @@
 import React, { createContext, useContext, useState, ReactNode, useEffect } from 'react';
 import PaymentMethodModal from './PaymentMethodModal';
 import CredentialsModal from './CredentialsModal';
-import { getOverview, purchaseProduct, createProductCheckout, createSinpeProductCheckout, rechargeWallet } from '@/lib/api';
+import { getOverview, purchaseProduct, createProductCheckout, createSinpeProductCheckout, createPayPalProductCheckout, rechargeWallet } from '@/lib/api';
 
 interface PaymentData {
   service: string;
@@ -143,8 +143,27 @@ export function PaymentProvider({ children }: { children: ReactNode }) {
         console.error('Error creating SINPE order:', error);
         alert('❌ Error al crear la orden SINPE');
       }
+    } else if (method === 'PAYPAL') {
+      try {
+        // Crear orden PayPal
+        const result = await createPayPalProductCheckout({
+          product_code: paymentData.productCode,
+          quantity: 1
+        });
+
+        if (result.ok && result.data) {
+          // Redirigir a PayPal para aprobar el pago
+          window.location.href = result.data.approval_url;
+          closePayment();
+        } else {
+          alert(`❌ Error: ${result.error || 'No se pudo crear la orden PayPal'}`);
+        }
+      } catch (error) {
+        console.error('Error creating PayPal order:', error);
+        alert('❌ Error al crear la orden PayPal');
+      }
     } else {
-      // Otros métodos de pago (PayPal, Binance)
+      // Otros métodos de pago (Binance)
       // TODO: Implementar redirección a procesadores externos
       alert(`Procesando pago ${method} por $${paymentData.price.toFixed(2)} de ${paymentData.service} · ${paymentData.plan}`);
       closePayment();

@@ -6,6 +6,7 @@ import * as jwt from 'jsonwebtoken';
 import * as bcrypt from 'bcrypt';
 import Stripe from 'stripe';
 import { EmailService } from '../email/email.service';
+import { PayPalService } from '../paypal/paypal.service';
 import { UseLoginRateLimit, UseStrictRateLimit } from '../../middleware/rate-limit.interceptor';
 
 
@@ -15,7 +16,8 @@ type JWTPayload = { id: number; tenant_id: number|null; role: string };
 export class AuthController {
   constructor(
     @Inject('PG_POOL') private readonly pg: Pool,
-    private readonly emailService: EmailService
+    private readonly emailService: EmailService,
+    private readonly paypalService: PayPalService
   ) {}
   
   private stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
@@ -509,6 +511,203 @@ export class AuthController {
         );
         break;
       }
+    }
+
+    res.json({ received: true });
+  }
+
+  @Post('webhook/paypal')
+  async handlePayPalWebhook(
+    @Req() req: Request,
+    @Res() res: Response,
+  ) {
+    const webhookId = process.env.PAYPAL_WEBHOOK_ID;
+    
+    // Verificar firma del webhook (en producción es crítico)
+    if (webhookId) {
+      const isValid = await this.paypalService.verifyWebhookSignature(
+        webhookId,
+        req.headers,
+        req.body
+      );
+      
+      if (!isValid) {
+        console.error('❌ PayPal webhook signature verification failed');
+        return res.status(401).json({ error: 'Invalid signature' });
+      }
+    }
+
+    const event = req.body;
+    const eventType = event.event_type;
+
+    console.log(`📥 PayPal webhook received: ${eventType}`);
+
+    switch (eventType) {
+      // Cuando el usuario aprueba el pago en PayPal
+      case 'CHECKOUT.ORDER.APPROVED': {
+        const resource = event.resource;
+        const paypalOrderId = resource.id;
+        
+        try {
+          // Capturar el pago automáticamente
+          const captureResult = await this.paypalService.captureOrder(paypalOrderId);
+          console.log(`✅ PayPal order captured: ${paypalOrderId}`);
+        } catch (error) {
+          console.error('Error capturing PayPal order:', error);
+        }
+        break;
+      }
+
+      // Cuando el pago se completa exitosamente
+      case 'PAYMENT.CAPTURE.COMPLETED': {
+        const resource = event.resource;
+        const paypalOrderId = resource.supplementary_data?.related_ids?.order_id;
+        
+        if (!paypalOrderId) {
+          console.error('❌ No order_id in PayPal capture event');
+          break;
+        }
+
+        try {
+          // Obtener detalles completos de la orden
+          const orderDetails = await this.paypalService.getOrder(paypalOrderId);
+          const customId = orderDetails.purchase_units?.[0]?.custom_id;
+
+          if (!customId) {
+            console.error('❌ No custom_id (order_id) in PayPal order');
+            break;
+          }
+
+          const orderId = parseInt(customId);
+
+          // 1. Verificar idempotencia - si ya se procesó, salir
+          const checkResult = await this.pg.query(
+            `SELECT event_type, payload FROM billing_events WHERE id = $1`,
+            [orderId]
+          );
+
+          if (checkResult.rows.length === 0) {
+            console.error(`❌ Order ${orderId} not found`);
+            break;
+          }
+
+          if (checkResult.rows[0].event_type === 'purchase_completed') {
+            console.warn(`⚠️ Order ${orderId} already completed (idempotency)`);
+            break;
+          }
+
+          const payload = checkResult.rows[0].payload;
+          const productCode = payload.product_code;
+          const quantity = parseInt(payload.quantity || '1');
+
+          const client = await this.pg.connect();
+          try {
+            await client.query('BEGIN');
+
+            // 2. Verificar stock disponible
+            const productResult = await client.query(
+              `SELECT code, name, stock FROM products WHERE code = $1 FOR UPDATE`,
+              [productCode]
+            );
+
+            if (productResult.rows.length === 0 || productResult.rows[0].stock < quantity) {
+              throw new Error('Insufficient stock');
+            }
+
+            const product = productResult.rows[0];
+
+            // 3. Asignar credenciales
+            const credentialsResult = await client.query(
+              `UPDATE credentials SET status = 'assigned', assigned_at = NOW()
+               WHERE product_code = $1 AND status = 'available'
+               RETURNING id, username, password, expiration_date
+               LIMIT $2`,
+              [productCode, quantity]
+            );
+
+            if (credentialsResult.rows.length < quantity) {
+              throw new Error('Not enough available credentials');
+            }
+
+            const credentials = credentialsResult.rows;
+
+            // 4. Descontar stock
+            await client.query(
+              `UPDATE products SET stock = stock - $1 WHERE code = $2`,
+              [quantity, productCode]
+            );
+
+            // 5. Obtener tenant_id del billing_event
+            const eventResult = await client.query(
+              `SELECT tenant_id FROM billing_events WHERE id = $1`,
+              [orderId]
+            );
+            const tenantId = eventResult.rows[0].tenant_id;
+
+            // 6. Crear registros en services para cada credencial
+            for (const cred of credentials) {
+              await client.query(
+                `INSERT INTO services (tenant_id, product_code, product_name, credentials_id, start_date, end_date)
+                 VALUES ($1, $2, $3, $4, NOW(), $5)`,
+                [tenantId, productCode, product.name, cred.id, cred.expiration_date]
+              );
+            }
+
+            // 7. Actualizar billing_event como completado
+            await client.query(
+              `UPDATE billing_events 
+               SET event_type = 'purchase_completed',
+                   payload = jsonb_set(payload, '{status}', '"completed"')
+               WHERE id = $1`,
+              [orderId]
+            );
+
+            await client.query('COMMIT');
+
+            // 8. Enviar email con credenciales
+            const userResult = await client.query(
+              `SELECT u.email, t.name as tenant_name
+               FROM users u
+               INNER JOIN tenants t ON u.id = t.user_id
+               WHERE t.id = $1`,
+              [tenantId]
+            );
+
+            if (userResult.rows.length > 0 && userResult.rows[0].email) {
+              const user = userResult.rows[0];
+              // Obtener fecha de expiración de las credenciales
+              const expiresAt = credentials[0]?.expiration_date || 'N/A';
+              
+              this.emailService.sendCredentialsEmail({
+                to: user.email,
+                tenantName: user.tenant_name || 'Cliente',
+                productName: product.name,
+                credentials: credentials.map(c => ({
+                  email: c.username,
+                  password: c.password,
+                })),
+                expiresAt: expiresAt,
+                orderNumber: payload.order_number || orderId.toString(),
+                totalPrice: parseFloat(payload.total_price),
+                discountApplied: parseFloat(payload.discount_applied || '0') * 100,
+              }).catch(err => console.error('Error sending email:', err));
+            }
+
+            console.log(`✅ PayPal purchase completed: Order ${orderId}, Product: ${productCode}, Qty: ${quantity}`);
+          } catch (error) {
+            await client.query('ROLLBACK');
+            console.error('Error processing PayPal purchase:', error);
+          } finally {
+            client.release();
+          }
+        } catch (error) {
+          console.error('Error handling PayPal capture:', error);
+        }
+        break;
+      }
+
+      default:
+        console.log(`ℹ️ Unhandled PayPal webhook event: ${eventType}`);
     }
 
     res.json({ received: true });
