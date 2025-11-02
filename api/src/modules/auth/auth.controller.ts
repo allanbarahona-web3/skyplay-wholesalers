@@ -232,20 +232,31 @@ export class AuthController {
     const quantity = parseInt(session.metadata.quantity || '1');
 
     try {
-      // 1. Obtener detalles de la orden
+      // 1. Verificar idempotencia - si ya se procesó, salir
+      const checkResult = await this.pg.query(
+        `SELECT event_type FROM billing_events WHERE id = $1`,
+        [orderId]
+      );
+
+      if (checkResult.rows.length === 0) {
+        console.error(`❌ Order ${orderId} not found`);
+        break;
+      }
+
+      if (checkResult.rows[0].event_type === 'purchase_completed') {
+        console.log(`⚠️ Order ${orderId} already processed (idempotent check), skipping`);
+        break;
+      }
+
+      // 2. Obtener detalles de la orden
       const orderResult = await this.pg.query(
         `SELECT payload FROM billing_events WHERE id = $1`,
         [orderId]
       );
 
-      if (orderResult.rows.length === 0) {
-        console.error(`❌ Order ${orderId} not found`);
-        break;
-      }
-
       const orderPayload = orderResult.rows[0].payload;
       
-      // 2. Crear servicios (uno por cada quantity)
+      // 3. Crear servicios (uno por cada quantity)
       for (let i = 0; i < quantity; i++) {
         // Buscar una credencial disponible
         const credResult = await this.pg.query(
@@ -279,13 +290,13 @@ export class AuthController {
         );
       }
 
-      // 3. Actualizar stock del producto
+      // 4. Actualizar stock del producto
       await this.pg.query(
         `UPDATE products SET stock = stock - $1 WHERE code = $2`,
         [quantity, productCode]
       );
 
-      // 4. Actualizar orden a completada
+      // 5. Actualizar orden a completada
       await this.pg.query(
         `UPDATE billing_events 
          SET event_type = 'purchase_completed', 
@@ -296,7 +307,7 @@ export class AuthController {
 
       console.log(`✅ Catalog purchase completed: ${quantity}x ${productCode} for tenant ${tenantId}`);
       
-      // 5. Enviar email con credenciales (async, no bloqueante)
+      // 6. Enviar email con credenciales (async, no bloqueante)
       try {
         const userResult = await this.pg.query(
           `SELECT u.email, t.name as tenant_name 
@@ -357,13 +368,24 @@ export class AuthController {
     const totalWithBonus = parseFloat(session.metadata.total_with_bonus || amount.toString());
 
     try {
-      // 1. Actualizar balance de la billetera
+      // 1. Verificar idempotencia - si ya se procesó, salir
+      const checkResult = await this.pg.query(
+        `SELECT event_type FROM billing_events WHERE id = $1`,
+        [orderId]
+      );
+
+      if (checkResult.rows.length > 0 && checkResult.rows[0].event_type === 'wallet_recharge_completed') {
+        console.log(`⚠️ Wallet recharge order ${orderId} already processed (idempotent check), skipping`);
+        break;
+      }
+
+      // 2. Actualizar balance de la billetera
       await this.pg.query(
         `UPDATE tenants SET wallet_balance = wallet_balance + $1 WHERE id = $2`,
         [totalWithBonus, tenantId]
       );
 
-      // 2. Actualizar orden a completada
+      // 3. Actualizar orden a completada
       await this.pg.query(
         `UPDATE billing_events 
          SET event_type = 'wallet_recharge_completed', 
@@ -383,6 +405,17 @@ export class AuthController {
   if (session.metadata?.order_type === 'renewal') {
     const serviceId = session.metadata.service_id;
     const orderId = session.metadata.order_id;
+    
+    // Verificar idempotencia - si ya se procesó, salir
+    const checkResult = await this.pg.query(
+      `SELECT event_type FROM billing_events WHERE id = $1`,
+      [orderId]
+    );
+
+    if (checkResult.rows.length > 0 && checkResult.rows[0].event_type === 'renewal_completed') {
+      console.log(`⚠️ Renewal order ${orderId} already processed (idempotent check), skipping`);
+      break;
+    }
     
     // Actualizar orden a completada
     await this.pg.query(

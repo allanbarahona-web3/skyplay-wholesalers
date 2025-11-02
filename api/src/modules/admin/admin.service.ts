@@ -119,20 +119,34 @@ export class AdminService {
     try {
       await client.query('BEGIN');
 
-      // 1. Obtener detalles de la orden
+      // 1. Verificar idempotencia - si ya se procesó, rechazar
+      const checkResult = await client.query(
+        `SELECT event_type FROM billing_events WHERE id = $1`,
+        [orderId]
+      );
+
+      if (checkResult.rows.length === 0) {
+        throw new Error('Order not found');
+      }
+
+      if (checkResult.rows[0].event_type !== 'purchase_pending') {
+        throw new Error(`Order already processed with status: ${checkResult.rows[0].event_type}`);
+      }
+
+      // 2. Obtener detalles de la orden
       const orderResult = await client.query(
         `SELECT tenant_id, payload FROM billing_events WHERE id = $1 AND event_type = 'purchase_pending' AND source = 'SINPE'`,
         [orderId]
       );
 
       if (orderResult.rows.length === 0) {
-        throw new Error('Order not found or already processed');
+        throw new Error('Order not found or invalid state');
       }
 
       const { tenant_id, payload } = orderResult.rows[0];
       const { product_code, quantity = 1 } = payload;
 
-      // 2. Crear servicios y asignar credenciales (igual que en el webhook)
+      // 3. Crear servicios y asignar credenciales (igual que en el webhook)
       const services = [];
       for (let i = 0; i < quantity; i++) {
         // Buscar credencial disponible
@@ -177,13 +191,13 @@ export class AdminService {
         });
       }
 
-      // 3. Actualizar stock del producto
+      // 4. Actualizar stock del producto
       await client.query(
         `UPDATE products SET stock = stock - $1 WHERE code = $2`,
         [quantity, product_code]
       );
 
-      // 4. Actualizar orden a completada
+      // 5. Actualizar orden a completada
       await client.query(
         `UPDATE billing_events 
          SET event_type = 'purchase_completed', 
@@ -197,7 +211,7 @@ export class AdminService {
 
       console.log(`✅ SINPE order confirmed: ${orderId} for tenant ${tenant_id}`);
       
-      // 5. Enviar email con credenciales (async, no bloqueante)
+      // 6. Enviar email con credenciales (async, no bloqueante)
       try {
         const userResult = await this.pg.query(
           `SELECT u.email, t.name as tenant_name 
