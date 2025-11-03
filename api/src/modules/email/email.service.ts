@@ -117,7 +117,12 @@ export class EmailService {
           <!-- Header -->
           <tr>
             <td style="background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%); padding: 40px 30px; text-align: center;">
-              <h1 style="margin: 0; color: #ffffff; font-size: 28px; font-weight: bold;">✅ ¡Compra Exitosa!</h1>
+              <!-- Logo Skyplay -->
+              <div style="margin: 0 auto 20px auto; text-align: center;">
+                <div style="color: #ffffff; font-size: 42px; font-weight: bold; line-height: 1; letter-spacing: -1px;">Skyplay</div>
+                <div style="color: #e0f2fe; font-size: 16px; font-weight: 500; margin-top: 4px; letter-spacing: 2px;">streaming</div>
+              </div>
+              <h1 style="margin: 20px 0 0 0; color: #ffffff; font-size: 28px; font-weight: bold;">✅ ¡Compra Exitosa!</h1>
               <p style="margin: 10px 0 0 0; color: #e0f2fe; font-size: 16px;">Tus credenciales están listas</p>
             </td>
           </tr>

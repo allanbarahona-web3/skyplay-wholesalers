@@ -3,6 +3,7 @@ import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { usePayment } from "@/components/PaymentContext";
 import CredentialsModal from "@/components/CredentialsModal";
+import SuccessInfoModal from "@/components/SuccessInfoModal";
 import { getAllProducts, logout } from "@/lib/api";
 import { groupProductsByService, createPriceMap, createProductCodeMap, getBrandColors, type CatalogService, type PriceMap, type ProductCodeMap } from "@/lib/catalog-utils";
 
@@ -14,6 +15,8 @@ export default function Home() {
   const [priceMap, setPriceMap] = useState<PriceMap>({});
   const [productCodeMap, setProductCodeMap] = useState<ProductCodeMap>({});
   const [showCredentialsModal, setShowCredentialsModal] = useState(false);
+  const [showSuccessInfoModal, setShowSuccessInfoModal] = useState(false);
+  const [successProvider, setSuccessProvider] = useState<string>('');
   const [purchasedServices, setPurchasedServices] = useState<any[]>([]);
   const router = useRouter();
   const { openPayment, walletBalance, refreshWallet } = usePayment();
@@ -22,53 +25,30 @@ export default function Home() {
     loadCatalog();
     refreshWallet();
     
-    // Detectar retorno desde Stripe y refrescar saldo
+    // Detectar retorno desde Stripe/PayPal y refrescar saldo
     const urlParams = new URLSearchParams(window.location.search);
     const paymentStatus = urlParams.get('payment');
+    const provider = urlParams.get('provider');
+    const orderNumber = urlParams.get('order');
+    const orderType = urlParams.get('type');
+    
     if (paymentStatus === 'success') {
-      const orderType = urlParams.get('type');
+      // Dar tiempo al webhook para procesar (PayPal/Stripe necesitan más tiempo)
+      const waitTime = (provider === 'paypal' || provider === 'stripe') ? 5000 : 2000;
       
-      // Dar tiempo al webhook para procesar
       setTimeout(async () => {
         refreshWallet();
         
         if (orderType === 'recharge') {
           alert('✅ ¡Recarga exitosa! Tu saldo ha sido actualizado.');
-        } else if (orderType === 'purchase') {
-          // Cargar servicios para mostrar credenciales
-          try {
-            const response = await fetch('http://localhost:3000/api/me/overview', {
-              credentials: 'include'
-            });
-            if (response.ok) {
-              const data = await response.json();
-              if (data.active_services && data.active_services.length > 0) {
-                // Mostrar el servicio más reciente (último comprado)
-                const latestService = data.active_services[0];
-                setPurchasedServices([{
-                  id: latestService.id,
-                  product_name: latestService.product_name,
-                  product_code: latestService.product_code,
-                  expires_at: latestService.expires_at,
-                  credentials: {
-                    email: latestService.credential_email,
-                    password: latestService.credential_password,
-                    profile_name: latestService.profile_name,
-                    pin: latestService.pin
-                  }
-                }]);
-                setShowCredentialsModal(true);
-              }
-            }
-          } catch (error) {
-            console.error('Error loading credentials:', error);
-            alert('✅ ¡Compra exitosa! Revisa tus credenciales en el Panel Mayorista.');
-          }
+          window.history.replaceState({}, '', window.location.pathname);
+        } else if (orderType === 'purchase' && (provider === 'paypal' || provider === 'stripe')) {
+          // Mostrar modal informativo (sin esperar al webhook)
+          setSuccessProvider(provider || '');
+          setShowSuccessInfoModal(true);
+          window.history.replaceState({}, '', window.location.pathname);
         }
-        
-        // Limpiar URL
-        window.history.replaceState({}, '', window.location.pathname);
-      }, 2000);
+      }, waitTime);
     }
   }, []);
 
@@ -295,6 +275,13 @@ export default function Home() {
         isOpen={showCredentialsModal}
         onClose={() => setShowCredentialsModal(false)}
         services={purchasedServices}
+      />
+
+      {/* Modal informativo para pagos con PayPal/Stripe */}
+      <SuccessInfoModal
+        isOpen={showSuccessInfoModal}
+        onClose={() => setShowSuccessInfoModal(false)}
+        provider={successProvider}
       />
     </div>
   );

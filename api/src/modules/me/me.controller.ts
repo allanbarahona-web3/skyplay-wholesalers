@@ -82,6 +82,7 @@ async overview(@Req() req: Request) {
       COALESCE(p.name, s.product_code) AS product_name,
       s.status, 
       s.expires_at,
+      s.created_at,
       c.email AS credential_email,
       c.password AS credential_password,
       c.profile_name,
@@ -144,4 +145,111 @@ const orders = await this.pg.query(ordQ, [tenant_id]);
     last_orders: orders.rows,
   };
 }
+
+  @Get('orders/:orderNumber/credentials')
+  async getOrderCredentials(@Param('orderNumber') orderNumber: string, @Req() req: Request) {
+    const payload = (req as any).user as JWTPayload;
+    const { tenant_id } = payload;
+
+    console.log(`🔍 Looking for order: ${orderNumber} for tenant: ${tenant_id}`);
+
+    if (!tenant_id) {
+      throw new HttpException('No autorizado', 403);
+    }
+
+    // Primero buscar sin filtrar por event_type para ver el estado real
+    const debugQuery = `
+      SELECT id, event_type, payload, source
+      FROM billing_events 
+      WHERE tenant_id = $1
+        AND (payload->>'order_number' = $2 OR order_number = $2)
+      ORDER BY id DESC 
+      LIMIT 1
+    `;
+    const { rows: debugRows } = await this.pg.query(debugQuery, [tenant_id, orderNumber]);
+    
+    console.log(`📊 Debug search result: ${debugRows.length} orders found`);
+    if (debugRows.length > 0) {
+      console.log(`📝 Order details: ID=${debugRows[0].id}, Type=${debugRows[0].event_type}, Source=${debugRows[0].source}`);
+    }
+
+    // Ahora buscar solo pedidos completados
+    const orderQuery = `
+      SELECT id, event_type, payload 
+      FROM billing_events 
+      WHERE tenant_id = $1
+        AND (payload->>'order_number' = $2 OR order_number = $2)
+        AND event_type = 'purchase_completed'
+      ORDER BY id DESC 
+      LIMIT 1
+    `;
+    const { rows: orderRows } = await this.pg.query(orderQuery, [tenant_id, orderNumber]);
+
+    console.log(`📦 Found ${orderRows.length} COMPLETED orders`);
+
+    if (orderRows.length === 0) {
+      if (debugRows.length > 0) {
+        console.log(`⚠️ Order exists but status is: ${debugRows[0].event_type} (not completed yet)`);
+        throw new HttpException(`Pedido en proceso (${debugRows[0].event_type}). Por favor espera unos segundos.`, 202);
+      } else {
+        console.log(`❌ Order ${orderNumber} not found in database`);
+        throw new HttpException('Pedido no encontrado', 404);
+      }
+    }
+
+    const order = orderRows[0];
+    const payload_data = order.payload;
+
+    // Obtener los servicios creados para este pedido
+    // Usar solo tenant_id y product_code, obtener los más recientes por cantidad
+    const servicesQuery = `
+      SELECT 
+        s.id,
+        s.product_code,
+        s.status,
+        s.expires_at,
+        c.email,
+        c.password,
+        c.profile_name,
+        c.pin,
+        p.name as product_name
+      FROM services s
+      JOIN credentials c ON s.credential_id = c.id
+      JOIN products p ON s.product_code = p.code
+      WHERE s.tenant_id = $1 
+        AND s.product_code = $2
+      ORDER BY s.id DESC
+      LIMIT $3
+    `;
+
+    const quantity = parseInt(payload_data.quantity || '1');
+    const productCode = payload_data.product_code;
+
+    const { rows: services } = await this.pg.query(servicesQuery, [
+      tenant_id,
+      productCode,
+      quantity
+    ]);
+
+    if (services.length === 0) {
+      throw new HttpException('No se encontraron credenciales para este pedido', 404);
+    }
+
+    return {
+      order_number: orderNumber,
+      product_name: services[0].product_name,
+      product_code: productCode,
+      quantity,
+      total_price: parseFloat(payload_data.total_price || '0'),
+      discount_applied: payload_data.discount_applied ? parseFloat(payload_data.discount_applied) * 100 : 0,
+      created_at: order.created_at,
+      credentials: services.map(s => ({
+        email: s.email,
+        password: s.password,
+        profile_name: s.profile_name,
+        pin: s.pin,
+        expires_at: s.expires_at,
+      })),
+    };
+  }
 }

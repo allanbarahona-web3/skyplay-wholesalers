@@ -329,7 +329,7 @@ export class ServicesController {
           quantity: quantity.toString(),
           order_type: 'catalog_purchase'
         },
-        success_url: `${process.env.FRONTEND_URL || 'http://localhost:3001'}/?payment=success&type=purchase&order=${orderNumber}`,
+        success_url: `${process.env.FRONTEND_URL || 'http://localhost:3001'}/?payment=success&type=purchase&order=${orderNumber}&provider=stripe`,
         cancel_url: `${process.env.FRONTEND_URL || 'http://localhost:3001'}/?payment=cancel`
       });
 

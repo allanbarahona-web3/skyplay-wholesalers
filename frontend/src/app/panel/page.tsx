@@ -1,8 +1,10 @@
 
 "use client";
 import React, { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { usePayment } from "@/components/PaymentContext";
+import { getOrderCredentials } from "@/lib/api";
+import CredentialsModal from "@/components/CredentialsModal";
 
 // Tipos básicos
 type Service = {
@@ -11,8 +13,11 @@ type Service = {
   product_code: string;
   status: string;
   expires_at?: string;
+  created_at?: string;
   credential_email?: string;
   credential_password?: string;
+  profile_name?: string;
+  pin?: string;
 };
 
 type Order = {
@@ -61,6 +66,14 @@ function getServiceStatus(s: Service) {
   return "active";
 }
 
+function isNewService(s: Service): boolean {
+  if (!s.created_at) return false;
+  const created = new Date(s.created_at);
+  const now = new Date();
+  const diffMinutes = (now.getTime() - created.getTime()) / (1000 * 60);
+  return diffMinutes <= 30; // Nuevo si fue creado hace menos de 30 minutos
+}
+
 // Modales
 function Modal({ open, onClose, children }: { open: boolean; onClose: () => void; children: React.ReactNode }) {
   if (!open) return null;
@@ -76,6 +89,8 @@ function Modal({ open, onClose, children }: { open: boolean; onClose: () => void
 
 export default function PanelMayoristaPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  
   // Estados principales
   const [services, setServices] = useState<Service[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
@@ -89,6 +104,42 @@ export default function PanelMayoristaPage() {
   const [selectedAmount, setSelectedAmount] = useState<number>(0);
   const [toastMsg, setToastMsg] = useState<string>("");
   const [toastOk, setToastOk] = useState<boolean>(false);
+  
+  // Estados para modal de credenciales (callback de pago)
+  const [showCredentialsModal, setShowCredentialsModal] = useState(false);
+  const [purchaseDetails, setPurchaseDetails] = useState<any>(null);
+  
+  // Estado para ver credenciales de servicios existentes
+  const [viewingService, setViewingService] = useState<Service | null>(null);
+
+  // Detectar callback de PayPal/Stripe
+  useEffect(() => {
+    const payment = searchParams?.get('payment');
+    const orderNumber = searchParams?.get('order');
+    const provider = searchParams?.get('provider');
+
+    if (payment === 'success' && orderNumber && (provider === 'paypal' || provider === 'stripe')) {
+      // Esperar un momento para que el webhook procese
+      setTimeout(async () => {
+        try {
+          const result = await getOrderCredentials(orderNumber);
+          if (result.ok && result.data) {
+            setPurchaseDetails(result.data);
+            setShowCredentialsModal(true);
+            // Limpiar URL sin recargar
+            window.history.replaceState({}, '', '/panel');
+          } else {
+            setToastMsg('⏳ Tu pedido está siendo procesado. Revisa tu email.');
+            setToastOk(false);
+          }
+        } catch (error) {
+          console.error('Error fetching order credentials:', error);
+          setToastMsg('⏳ Tu pedido está siendo procesado. Revisa tu email.');
+          setToastOk(false);
+        }
+      }, 2000); // Esperar 2 segundos para que el webhook procese
+    }
+  }, [searchParams]);
 
   // Cargar datos reales desde el backend
   useEffect(() => {
@@ -122,6 +173,7 @@ export default function PanelMayoristaPage() {
           product_code: s.product_code,
           status: s.status,
           expires_at: s.expires_at,
+          created_at: s.created_at,
           credential_email: s.credential_email,
           credential_password: s.credential_password,
           profile_name: s.profile_name,
@@ -165,6 +217,10 @@ export default function PanelMayoristaPage() {
       price: 7.95, // Precio con descuento
       productCode: service.product_code
     });
+  };
+
+  const handleViewCredentials = (service: Service) => {
+    setViewingService(service);
   };
 
   const handleSubscription = () => {
@@ -353,7 +409,7 @@ export default function PanelMayoristaPage() {
                   <th>Vence</th>
                   <th>Normal</th>
                   <th>Descuento</th>
-                  <th></th>
+                  <th>Acciones</th>
                 </tr>
               </thead>
               <tbody>
@@ -364,10 +420,29 @@ export default function PanelMayoristaPage() {
                   return matchSearch && matchFilter;
                 }).map((s, index) => {
                   const status = getServiceStatus(s);
+                  const isNew = isNewService(s);
                   return (
-                    <tr key={s.id}>
+                    <tr key={s.id} style={isNew ? { backgroundColor: '#f0fdf4', animation: 'fadeIn 0.5s' } : {}}>
                       <td className="td-number">{index + 1}</td>
-                      <td className="td-product">{s.product_name}</td>
+                      <td className="td-product">
+                        {s.product_name}
+                        {isNew && (
+                          <span style={{
+                            marginLeft: '8px',
+                            backgroundColor: '#22c55e',
+                            color: 'white',
+                            padding: '2px 8px',
+                            borderRadius: '4px',
+                            fontSize: '11px',
+                            fontWeight: 'bold',
+                            verticalAlign: 'middle',
+                            display: 'inline-block',
+                            animation: 'pulse 2s infinite'
+                          }}>
+                            🆕 NUEVO
+                          </span>
+                        )}
+                      </td>
                       <td>
                         <span className={`badge badge-${status}`}>
                           {status === "active" ? "Activo" : status === "soon" ? "Por vencer" : status === "expired" ? "Vencido" : "Cancelado"}
@@ -377,7 +452,24 @@ export default function PanelMayoristaPage() {
                       <td className="td-price">$9.95</td>
                       <td className="td-price discount">$7.95</td>
                       <td className="td-action">
-                        <button className="btn-table" onClick={() => handleRenew(s)}>Renovar</button>
+                        <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+                          <button 
+                            className="btn-table" 
+                            onClick={() => handleViewCredentials(s)}
+                            style={{
+                              backgroundColor: '#10b981',
+                              border: 'none',
+                              padding: '6px 12px',
+                              fontSize: '13px'
+                            }}
+                            title="Ver credenciales"
+                          >
+                            👁️ Ver
+                          </button>
+                          <button className="btn-table" onClick={() => handleRenew(s)}>
+                            Renovar
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -491,11 +583,73 @@ export default function PanelMayoristaPage() {
         </div>
       </Modal>
 
+      {/* Modal de Credenciales (callback PayPal/Stripe) */}
+      {showCredentialsModal && purchaseDetails && (
+        <CredentialsModal
+          isOpen={showCredentialsModal}
+          onClose={() => {
+            setShowCredentialsModal(false);
+            setPurchaseDetails(null);
+            loadOverviewData(); // Recargar datos
+          }}
+          services={purchaseDetails.credentials.map((cred: any, idx: number) => ({
+            id: `temp-${idx}`,
+            product_name: purchaseDetails.product_name,
+            product_code: purchaseDetails.product_code,
+            expires_at: cred.expires_at,
+            credentials: {
+              email: cred.email,
+              password: cred.password,
+              profile_name: cred.profile_name,
+              pin: cred.pin,
+            }
+          }))}
+          purchaseInfo={{
+            product_name: purchaseDetails.product_name,
+            total_price: purchaseDetails.total_price,
+            discount_applied: purchaseDetails.discount_applied,
+          }}
+        />
+      )}
+
+      {/* Modal para ver credenciales de servicios existentes */}
+      {viewingService && (
+        <CredentialsModal
+          isOpen={true}
+          onClose={() => setViewingService(null)}
+          services={[{
+            id: viewingService.id,
+            product_name: viewingService.product_name,
+            product_code: viewingService.product_code,
+            expires_at: viewingService.expires_at || '',
+            credentials: {
+              email: viewingService.credential_email || '',
+              password: viewingService.credential_password || '',
+              profile_name: (viewingService as any).profile_name || '',
+              pin: (viewingService as any).pin || '',
+            }
+          }]}
+        />
+      )}
+
         {/* Toast */}
         {toastMsg && (
           <div className={`toast${toastOk ? " ok" : " err"}`}>{toastMsg}</div>
         )}
       </main>
+
+      {/* Animaciones para servicios nuevos */}
+      <style jsx>{`
+        @keyframes fadeIn {
+          from { opacity: 0; transform: translateY(-10px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        
+        @keyframes pulse {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.7; }
+        }
+      `}</style>
     </div>
   );
 }

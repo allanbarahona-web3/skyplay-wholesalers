@@ -226,9 +226,12 @@ export class AuthController {
       return res.status(400).send(`Webhook Error: ${err.message}`);
     }
 
+    console.log(`📥 Stripe webhook received: ${event.type}, Event ID: ${event.id}`);
+
     switch (event.type) {
       case 'checkout.session.completed': {
   const session = event.data.object as Stripe.Checkout.Session;
+  console.log(`🔍 Session metadata:`, JSON.stringify(session.metadata, null, 2));
   
   // ========== COMPRA DE CATÁLOGO ==========
   if (session.metadata?.order_type === 'catalog_purchase') {
@@ -236,74 +239,92 @@ export class AuthController {
     const productCode = session.metadata.product_code;
     const tenantId = parseInt(session.metadata.tenant_id || '0');
     const quantity = parseInt(session.metadata.quantity || '1');
+    
+    console.log(`🛒 Processing catalog purchase: Order=${orderId}, Product=${productCode}, Qty=${quantity}`);
 
+    const client = await this.pg.connect();
     try {
-      // 1. Verificar idempotencia - si ya se procesó, salir
-      const checkResult = await this.pg.query(
-        `SELECT event_type FROM billing_events WHERE id = $1`,
+      await client.query('BEGIN');
+
+      // 1. Verificar idempotencia CON LOCK - si ya se procesó, salir
+      const checkResult = await client.query(
+        `SELECT event_type FROM billing_events WHERE id = $1 FOR UPDATE`,
         [orderId]
       );
 
       if (checkResult.rows.length === 0) {
         console.error(`❌ Order ${orderId} not found`);
+        await client.query('ROLLBACK');
         break;
       }
 
       if (checkResult.rows[0].event_type === 'purchase_completed') {
         console.log(`⚠️ Order ${orderId} already processed (idempotent check), skipping`);
+        await client.query('ROLLBACK');
         break;
       }
 
-      // 2. Obtener detalles de la orden
-      const orderResult = await this.pg.query(
-        `SELECT payload FROM billing_events WHERE id = $1`,
-        [orderId]
+      // 2. Verificar stock disponible
+      const productResult = await client.query(
+        `SELECT code, name, stock FROM products WHERE code = $1 FOR UPDATE`,
+        [productCode]
       );
 
-      const orderPayload = orderResult.rows[0].payload;
+      if (productResult.rows.length === 0 || productResult.rows[0].stock < quantity) {
+        throw new Error('Insufficient stock');
+      }
+
+      const product = productResult.rows[0];
+
+      // 3. Seleccionar credenciales disponibles con FOR UPDATE SKIP LOCKED
+      const availableCredsResult = await client.query(
+        `SELECT id, email, password, profile_name, pin
+         FROM credentials 
+         WHERE product_code = $1 AND status = 'available'
+         ORDER BY created_at ASC
+         LIMIT $2
+         FOR UPDATE SKIP LOCKED`,
+        [productCode, quantity]
+      );
+
+      if (availableCredsResult.rows.length < quantity) {
+        throw new Error(`Not enough available credentials. Need ${quantity}, found ${availableCredsResult.rows.length}`);
+      }
+
+      const credIds = availableCredsResult.rows.map(c => c.id);
       
-      // 3. Crear servicios (uno por cada quantity)
-      for (let i = 0; i < quantity; i++) {
-        // Buscar una credencial disponible
-        const credResult = await this.pg.query(
-          `SELECT id FROM credentials 
-           WHERE product_code = $1 AND status = 'available' 
-           LIMIT 1`,
-          [productCode]
-        );
+      // 4. Marcar como asignadas
+      const credentialsResult = await client.query(
+        `UPDATE credentials 
+         SET status = 'assigned', updated_at = NOW()
+         WHERE id = ANY($1)
+         RETURNING id, email, password, profile_name, pin`,
+        [credIds]
+      );
 
-        if (credResult.rows.length === 0) {
-          console.error(`❌ No credentials available for product ${productCode}`);
-          continue;
-        }
+      if (credentialsResult.rows.length < quantity) {
+        throw new Error('Failed to assign credentials');
+      }
 
-        const credentialId = credResult.rows[0].id;
-        
-        // Crear el servicio
-        const serviceResult = await this.pg.query(
+      const credentials = credentialsResult.rows;
+
+      // 5. Crear servicios para cada credencial
+      for (const cred of credentials) {
+        await client.query(
           `INSERT INTO services (tenant_id, product_code, credential_id, status, expires_at)
-           VALUES ($1, $2, $3, 'active', NOW() + INTERVAL '30 days')
-           RETURNING id`,
-          [tenantId, productCode, credentialId]
-        );
-
-        const serviceId = serviceResult.rows[0].id;
-
-        // Marcar la credencial como asignada
-        await this.pg.query(
-          `UPDATE credentials SET status = 'assigned', assigned_to = $1 WHERE id = $2`,
-          [serviceId, credentialId]
+           VALUES ($1, $2, $3, 'active', NOW() + INTERVAL '30 days')`,
+          [tenantId, productCode, cred.id]
         );
       }
 
-      // 4. Actualizar stock del producto
-      await this.pg.query(
+      // 6. Descontar stock
+      await client.query(
         `UPDATE products SET stock = stock - $1 WHERE code = $2`,
         [quantity, productCode]
       );
 
-      // 5. Actualizar orden a completada
-      await this.pg.query(
+      // 7. Actualizar orden a completada
+      await client.query(
         `UPDATE billing_events 
          SET event_type = 'purchase_completed', 
              payload = jsonb_set(payload, '{payment_status}', '"completed"')
@@ -311,57 +332,45 @@ export class AuthController {
         [orderId]
       );
 
-      console.log(`✅ Catalog purchase completed: ${quantity}x ${productCode} for tenant ${tenantId}`);
+      await client.query('COMMIT');
+
+      console.log(`✅ Stripe catalog purchase completed: Order ${orderId}, Product: ${productCode}, Qty: ${quantity}`);
       
-      // 6. Enviar email con credenciales (async, no bloqueante)
-      try {
-        const userResult = await this.pg.query(
-          `SELECT u.email, t.name as tenant_name 
-           FROM users u 
-           JOIN tenants t ON u.tenant_id = t.id 
-           WHERE u.tenant_id = $1 
-           LIMIT 1`,
-          [tenantId]
-        );
+      // 8. Enviar email con credenciales (después del commit)
+      const userResult = await client.query(
+        `SELECT u.email, t.name as tenant_name 
+         FROM users u 
+         JOIN tenants t ON u.tenant_id = t.id 
+         WHERE u.tenant_id = $1 
+         LIMIT 1`,
+        [tenantId]
+      );
+      
+      if (userResult.rows.length > 0 && userResult.rows[0].email) {
+        const user = userResult.rows[0];
+        const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toLocaleDateString();
         
-        if (userResult.rows.length > 0 && userResult.rows[0].email) {
-          const user = userResult.rows[0];
-          
-          // Obtener credenciales del servicio creado
-          const servicesResult = await this.pg.query(
-            `SELECT s.id, s.expires_at, c.email, c.password, c.profile_name, c.pin, p.name as product_name
-             FROM services s
-             JOIN credentials c ON s.credential_id = c.id
-             JOIN products p ON s.product_code = p.code
-             WHERE s.tenant_id = $1 AND s.product_code = $2
-             ORDER BY s.created_at DESC
-             LIMIT $3`,
-            [tenantId, productCode, quantity]
-          );
-          
-          if (servicesResult.rows.length > 0) {
-            const service = servicesResult.rows[0];
-            await this.emailService.sendCredentialsEmail({
-              to: user.email,
-              tenantName: user.tenant_name,
-              productName: service.product_name,
-              credentials: servicesResult.rows.map(s => ({
-                email: s.email,
-                password: s.password,
-                profile_name: s.profile_name,
-                pin: s.pin,
-              })),
-              expiresAt: service.expires_at,
-              orderNumber: session.metadata?.order_number,
-            });
-            console.log(`📧 Email sent to ${user.email} for order ${orderId}`);
-          }
-        }
-      } catch (emailErr: any) {
-        console.error('Error sending email after catalog purchase:', emailErr.message);
+        this.emailService.sendCredentialsEmail({
+          to: user.email,
+          tenantName: user.tenant_name || 'Cliente',
+          productName: product.name,
+          credentials: credentials.map(c => ({
+            email: c.email,
+            password: c.password,
+            profileName: c.profile_name,
+            pin: c.pin,
+          })),
+          expiresAt: expiresAt,
+          orderNumber: session.metadata?.order_number || orderId.toString(),
+          totalPrice: parseFloat(session.amount_total?.toString() || '0') / 100,
+          discountApplied: 0,
+        }).catch(err => console.error('Error sending email:', err));
       }
     } catch (err: any) {
-      console.error('Error processing catalog purchase:', err.message);
+      await client.query('ROLLBACK');
+      console.error('Error processing Stripe catalog purchase:', err.message);
+    } finally {
+      client.release();
     }
     break;
   }
@@ -373,26 +382,30 @@ export class AuthController {
     const amount = parseFloat(session.metadata.amount || '0');
     const totalWithBonus = parseFloat(session.metadata.total_with_bonus || amount.toString());
 
+    const client = await this.pg.connect();
     try {
-      // 1. Verificar idempotencia - si ya se procesó, salir
-      const checkResult = await this.pg.query(
-        `SELECT event_type FROM billing_events WHERE id = $1`,
+      await client.query('BEGIN');
+
+      // 1. Verificar idempotencia CON LOCK - si ya se procesó, salir
+      const checkResult = await client.query(
+        `SELECT event_type FROM billing_events WHERE id = $1 FOR UPDATE`,
         [orderId]
       );
 
       if (checkResult.rows.length > 0 && checkResult.rows[0].event_type === 'wallet_recharge_completed') {
         console.log(`⚠️ Wallet recharge order ${orderId} already processed (idempotent check), skipping`);
+        await client.query('ROLLBACK');
         break;
       }
 
       // 2. Actualizar balance de la billetera
-      await this.pg.query(
+      await client.query(
         `UPDATE tenants SET wallet_balance = wallet_balance + $1 WHERE id = $2`,
         [totalWithBonus, tenantId]
       );
 
       // 3. Actualizar orden a completada
-      await this.pg.query(
+      await client.query(
         `UPDATE billing_events 
          SET event_type = 'wallet_recharge_completed', 
              payload = jsonb_set(payload, '{payment_status}', '"completed"')
@@ -400,9 +413,13 @@ export class AuthController {
         [orderId]
       );
 
+      await client.query('COMMIT');
       console.log(`✅ Wallet recharged: $${totalWithBonus} for tenant ${tenantId} (original: $${amount})`);
     } catch (err: any) {
+      await client.query('ROLLBACK');
       console.error('Error processing wallet recharge:', err.message);
+    } finally {
+      client.release();
     }
     break;
   }
@@ -412,31 +429,36 @@ export class AuthController {
     const serviceId = session.metadata.service_id;
     const orderId = session.metadata.order_id;
     
-    // Verificar idempotencia - si ya se procesó, salir
-    const checkResult = await this.pg.query(
-      `SELECT event_type FROM billing_events WHERE id = $1`,
+    const client = await this.pg.connect();
+    try {
+      await client.query('BEGIN');
+
+      // Verificar idempotencia CON LOCK - si ya se procesó, salir
+      const checkResult = await client.query(
+        `SELECT event_type FROM billing_events WHERE id = $1 FOR UPDATE`,
+        [orderId]
+      );
+
+      if (checkResult.rows.length > 0 && checkResult.rows[0].event_type === 'renewal_completed') {
+        console.log(`⚠️ Renewal order ${orderId} already processed (idempotent check), skipping`);
+        await client.query('ROLLBACK');
+        break;
+      }
+      
+      // Actualizar orden a completada
+      await client.query(
+      `UPDATE billing_events 
+       SET event_type = 'renewal_completed', 
+           payload = jsonb_set(
+             jsonb_set(payload, '{payment_status}', '"completed"'),
+             '{status}', '"completed"'
+           )
+       WHERE id = $1`,
       [orderId]
     );
-
-    if (checkResult.rows.length > 0 && checkResult.rows[0].event_type === 'renewal_completed') {
-      console.log(`⚠️ Renewal order ${orderId} already processed (idempotent check), skipping`);
-      break;
-    }
-    
-    // Actualizar orden a completada
-    await this.pg.query(
-    `UPDATE billing_events 
-     SET event_type = 'renewal_completed', 
-         payload = jsonb_set(
-           jsonb_set(payload, '{payment_status}', '"completed"'),
-           '{status}', '"completed"'
-         )
-     WHERE id = $1`,
-    [orderId]
-  );
-    
-    // Extender servicio
-    await this.pg.query(
+      
+      // Extender servicio
+      await client.query(
       `UPDATE services 
        SET expires_at = CASE 
          WHEN expires_at > NOW() THEN expires_at + INTERVAL '30 days'
@@ -446,8 +468,15 @@ export class AuthController {
        WHERE id = $1`,
       [serviceId]
     );
-    
-    console.log(`✅ Service ${serviceId} renewed for 30 days`);
+      
+      await client.query('COMMIT');
+      console.log(`✅ Service ${serviceId} renewed for 30 days`);
+    } catch (err: any) {
+      await client.query('ROLLBACK');
+      console.error('Error processing service renewal:', err.message);
+    } finally {
+      client.release();
+    }
     break;
   }
   
@@ -616,44 +645,61 @@ export class AuthController {
 
             const product = productResult.rows[0];
 
-            // 3. Asignar credenciales
-            const credentialsResult = await client.query(
-              `UPDATE credentials SET status = 'assigned', assigned_at = NOW()
+            // 3. Seleccionar credenciales disponibles
+            const availableCredsResult = await client.query(
+              `SELECT id, email, password, profile_name, pin
+               FROM credentials 
                WHERE product_code = $1 AND status = 'available'
-               RETURNING id, username, password, expiration_date
-               LIMIT $2`,
+               ORDER BY created_at ASC
+               LIMIT $2
+               FOR UPDATE SKIP LOCKED`,
               [productCode, quantity]
             );
 
+            if (availableCredsResult.rows.length < quantity) {
+              throw new Error(`Not enough available credentials. Need ${quantity}, found ${availableCredsResult.rows.length}`);
+            }
+
+            const credIds = availableCredsResult.rows.map(c => c.id);
+            
+            // 4. Marcar como asignadas
+            const credentialsResult = await client.query(
+              `UPDATE credentials 
+               SET status = 'assigned', updated_at = NOW()
+               WHERE id = ANY($1)
+               RETURNING id, email, password, profile_name, pin`,
+              [credIds]
+            );
+
             if (credentialsResult.rows.length < quantity) {
-              throw new Error('Not enough available credentials');
+              throw new Error('Failed to assign credentials');
             }
 
             const credentials = credentialsResult.rows;
 
-            // 4. Descontar stock
+            // 5. Descontar stock
             await client.query(
               `UPDATE products SET stock = stock - $1 WHERE code = $2`,
               [quantity, productCode]
             );
 
-            // 5. Obtener tenant_id del billing_event
+            // 6. Obtener tenant_id del billing_event
             const eventResult = await client.query(
               `SELECT tenant_id FROM billing_events WHERE id = $1`,
               [orderId]
             );
             const tenantId = eventResult.rows[0].tenant_id;
 
-            // 6. Crear registros en services para cada credencial
+            // 7. Crear registros en services para cada credencial
             for (const cred of credentials) {
               await client.query(
-                `INSERT INTO services (tenant_id, product_code, product_name, credentials_id, start_date, end_date)
-                 VALUES ($1, $2, $3, $4, NOW(), $5)`,
-                [tenantId, productCode, product.name, cred.id, cred.expiration_date]
+                `INSERT INTO services (tenant_id, product_code, credential_id, status, expires_at)
+                 VALUES ($1, $2, $3, 'active', NOW() + INTERVAL '30 days')`,
+                [tenantId, productCode, cred.id]
               );
             }
 
-            // 7. Actualizar billing_event como completado
+            // 8. Actualizar billing_event como completado
             await client.query(
               `UPDATE billing_events 
                SET event_type = 'purchase_completed',
@@ -664,27 +710,29 @@ export class AuthController {
 
             await client.query('COMMIT');
 
-            // 8. Enviar email con credenciales
+            // 9. Enviar email con credenciales
             const userResult = await client.query(
               `SELECT u.email, t.name as tenant_name
                FROM users u
-               INNER JOIN tenants t ON u.id = t.user_id
+               INNER JOIN tenants t ON u.tenant_id = t.id
                WHERE t.id = $1`,
               [tenantId]
             );
 
             if (userResult.rows.length > 0 && userResult.rows[0].email) {
               const user = userResult.rows[0];
-              // Obtener fecha de expiración de las credenciales
-              const expiresAt = credentials[0]?.expiration_date || 'N/A';
+              // Calcular fecha de expiración (30 días desde ahora)
+              const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toLocaleDateString();
               
               this.emailService.sendCredentialsEmail({
                 to: user.email,
                 tenantName: user.tenant_name || 'Cliente',
                 productName: product.name,
                 credentials: credentials.map(c => ({
-                  email: c.username,
+                  email: c.email,
                   password: c.password,
+                  profileName: c.profile_name,
+                  pin: c.pin,
                 })),
                 expiresAt: expiresAt,
                 orderNumber: payload.order_number || orderId.toString(),
