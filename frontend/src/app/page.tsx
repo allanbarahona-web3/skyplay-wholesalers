@@ -123,8 +123,8 @@ export default function Home() {
         <div className="apple-header-content">
           <div className="apple-header-left">
             <img src="/White on Transparent.png" alt="Skyplay" className="apple-logo" />
-            <span className="apple-divider"></span>
-            <span className="apple-badge">Mayoristas</span>
+            <div className="apple-divider"></div>
+            <span className="apple-header-title">Catálogo Mayorista</span>
           </div>
           
           <div className="apple-header-center">
@@ -143,8 +143,12 @@ export default function Home() {
             <div className="apple-wallet">
               💰 ${walletBalance.toFixed(2)}
             </div>
-            <button className="apple-btn-secondary" onClick={goToPanel}>Panel</button>
-            <button className="apple-btn-secondary" onClick={handleLogout}>Salir</button>
+            <button className="apple-btn-link" onClick={goToPanel}>
+              <span>📊</span> Panel Mayorista
+            </button>
+            <button className="apple-btn-link" onClick={handleLogout}>
+              <span>👤</span> Salir
+            </button>
           </div>
         </div>
       </header>
@@ -161,14 +165,18 @@ export default function Home() {
       <div className="ticker-container">
         <div className="ticker-wrapper">
           <div className="ticker">
-            <span className="ticker-item">💰 Billetera Virtual: $10 recibe 10% • $25 recibe 20% • $50 recibe 30% • $100 recibe 40%</span>
-            <span className="ticker-item">🛍️ ¡Obtén tu propia Tienda Virtual muy pronto en tu Panel Mayorista!</span>
-            <span className="ticker-item">⭐ Adquiere tu Suscripción Basic y obtén 30% descuento en todas tus compras</span>
-            <span className="ticker-item">🚀 Suscripción Plata: Obtén un CRM para la administración de tus clientes</span>
-            <span className="ticker-item">💰 Billetera Virtual: $10 recibe 10% • $25 recibe 20% • $50 recibe 30% • $100 recibe 40%</span>
-            <span className="ticker-item">🛍️ ¡Obtén tu propia Tienda Virtual muy pronto en tu Panel Mayorista!</span>
-            <span className="ticker-item">⭐ Adquiere tu Suscripción Basic y obtén 30% descuento en todas tus compras</span>
-            <span className="ticker-item">🚀 Suscripción Plata: Obtén un CRM para la administración de tus clientes</span>
+            <div className="ticker-content">
+              <span className="ticker-item">💰 Billetera Virtual: $10 recibe 10% • $25 recibe 20% • $50 recibe 30% • $100 recibe 40%</span>
+              <span className="ticker-item">🛍️ ¡Obtén tu propia Tienda Virtual muy pronto en tu Panel Mayorista!</span>
+              <span className="ticker-item">⭐ Adquiere tu Suscripción Basic y obtén 30% descuento en todas tus compras</span>
+              <span className="ticker-item">🚀 Suscripción Plata: Adiciona un Sistema CRM para la administración de tus clientes Muy Pronto!!!</span>
+            </div>
+            <div className="ticker-content" aria-hidden="true">
+              <span className="ticker-item">💰 Billetera Virtual: $10 recibe 10% • $25 recibe 20% • $50 recibe 30% • $100 recibe 40%</span>
+              <span className="ticker-item">🛍️ ¡Obtén tu propia Tienda Virtual muy pronto en tu Panel Mayorista!</span>
+              <span className="ticker-item">⭐ Adquiere tu Suscripción Basic y obtén 30% descuento en todas tus compras</span>
+              <span className="ticker-item">🚀 Suscripción Plata: Adiciona un Sistema CRM para la administración de tus clientes Muy Pronto!!!</span>
+            </div>
           </div>
         </div>
       </div>

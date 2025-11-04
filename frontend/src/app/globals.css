@@ -1793,8 +1793,14 @@ main.container {
 
 .ticker {
   display: flex;
+  width: fit-content;
+  animation: scroll 40s linear infinite;
+}
+
+.ticker-content {
+  display: flex;
   white-space: nowrap;
-  animation: scroll 30s linear infinite;
+  flex-shrink: 0;
 }
 
 .ticker-item {
@@ -1804,6 +1810,7 @@ main.container {
   font-weight: 500;
   color: var(--text);
   letter-spacing: -0.01em;
+  flex-shrink: 0;
 }
 
 @keyframes scroll {
