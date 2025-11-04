@@ -91,8 +91,8 @@ async overview(@Req() req: Request) {
     LEFT JOIN products p ON s.product_code = p.code
     LEFT JOIN credentials c ON s.credential_id = c.id
     WHERE s.tenant_id=$1
-    ORDER BY s.expires_at ASC
-    LIMIT 50
+    ORDER BY s.created_at DESC
+    LIMIT 200
   `;
   const services = await this.pg.query(srvQ, [tenant_id]);
 

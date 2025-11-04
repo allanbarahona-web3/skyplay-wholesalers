@@ -2,13 +2,15 @@
 import React, { createContext, useContext, useState, ReactNode, useEffect } from 'react';
 import PaymentMethodModal from './PaymentMethodModal';
 import CredentialsModal from './CredentialsModal';
-import { getOverview, purchaseProduct, createProductCheckout, createSinpeProductCheckout, createPayPalProductCheckout, rechargeWallet } from '@/lib/api';
+import { getOverview, purchaseProduct, createProductCheckout, createSinpeProductCheckout, createPayPalProductCheckout, rechargeWallet, rechargeWalletPayPal, renewFromWallet, createRenewalCheckout, initiateRenewal } from '@/lib/api';
 
 interface PaymentData {
   service: string;
   plan: string;
   price: number;
   productCode: string;
+  isRenewal?: boolean; // Para identificar renovaciones
+  serviceId?: string; // ID del servicio a renovar
 }
 
 interface PaymentContextType {
@@ -68,7 +70,26 @@ export function PaymentProvider({ children }: { children: ReactNode }) {
 
     if (method === 'WALLET') {
       try {
-        // Comprar con billetera
+        // Si es renovación, usar endpoint específico de renovación
+        if (paymentData.isRenewal && paymentData.serviceId) {
+          const result = await renewFromWallet(paymentData.serviceId);
+          
+          if (result.ok && result.data) {
+            // Actualizar balance (renovación consume del balance)
+            await refreshWallet();
+            
+            closePayment();
+            // Redirigir al panel con parámetros para mostrar modal de renovación
+            const orderNumber = `WALLET-RENEW-${Date.now()}`;
+            window.location.href = `/panel?payment=success&type=renewal&order=${orderNumber}&provider=wallet&service_id=${paymentData.serviceId}`;
+            return;
+          } else {
+            alert(`❌ Error: ${result.error || 'No se pudo procesar la renovación'}`);
+            return;
+          }
+        }
+        
+        // Compra normal con billetera
         const result = await purchaseProduct({
           product_code: paymentData.productCode,
           quantity: 1
@@ -80,7 +101,7 @@ export function PaymentProvider({ children }: { children: ReactNode }) {
           // Actualizar balance
           setWalletBalance(purchase.new_balance);
           
-          // Preparar datos para el modal de credenciales
+          // Preparar datos para el modal de credenciales (compra normal)
           setPurchasedServices(services);
           setPurchaseDetails({
             product_name: purchase.product_name,
@@ -100,7 +121,28 @@ export function PaymentProvider({ children }: { children: ReactNode }) {
       }
     } else if (method === 'CARD') {
       try {
-        // Crear checkout de Stripe
+        // Si es renovación, primero iniciar renovación y luego crear checkout
+        if (paymentData.isRenewal && paymentData.serviceId) {
+          // Paso 1: Crear billing_event de renovación
+          const renewResult = await initiateRenewal(paymentData.serviceId);
+          
+          if (!renewResult.ok || !renewResult.data) {
+            alert(`❌ Error: ${renewResult.error || 'No se pudo iniciar la renovación'}`);
+            return;
+          }
+          
+          // Paso 2: Crear checkout de Stripe
+          const checkoutResult = await createRenewalCheckout(paymentData.serviceId, 'stripe');
+          
+          if (checkoutResult.ok && checkoutResult.data) {
+            window.location.href = checkoutResult.data.checkout_url!;
+          } else {
+            alert(`❌ Error: ${checkoutResult.error || 'No se pudo crear el checkout de renovación'}`);
+          }
+          return;
+        }
+        
+        // Compra normal
         const result = await createProductCheckout({
           product_code: paymentData.productCode,
           quantity: 1
@@ -145,7 +187,29 @@ export function PaymentProvider({ children }: { children: ReactNode }) {
       }
     } else if (method === 'PAYPAL') {
       try {
-        // Crear orden PayPal
+        // Si es renovación, primero iniciar renovación y luego crear checkout
+        if (paymentData.isRenewal && paymentData.serviceId) {
+          // Paso 1: Crear billing_event de renovación
+          const renewResult = await initiateRenewal(paymentData.serviceId);
+          
+          if (!renewResult.ok || !renewResult.data) {
+            alert(`❌ Error: ${renewResult.error || 'No se pudo iniciar la renovación'}`);
+            return;
+          }
+          
+          // Paso 2: Crear orden de PayPal
+          const result = await createRenewalCheckout(paymentData.serviceId, 'paypal');
+          
+          if (result.ok && result.data) {
+            window.location.href = result.data.approval_url!;
+            closePayment();
+          } else {
+            alert(`❌ Error: ${result.error || 'No se pudo crear la orden de renovación'}`);
+          }
+          return;
+        }
+        
+        // Compra normal
         const result = await createPayPalProductCheckout({
           product_code: paymentData.productCode,
           quantity: 1
@@ -171,12 +235,39 @@ export function PaymentProvider({ children }: { children: ReactNode }) {
   };
 
   const handleWalletRecharge = async (amount: number, method: string) => {
-    if (!['CARD', 'SINPE', 'BINANCE'].includes(method)) {
+    if (!['CARD', 'SINPE', 'BINANCE', 'PAYPAL'].includes(method)) {
       alert('Método de pago no soportado');
       return;
     }
 
     try {
+      // Si es PayPal, usar endpoint específico
+      if (method === 'PAYPAL') {
+        const result = await rechargeWalletPayPal({ amount });
+        
+        if (result.ok && result.data) {
+          // Mostrar información del bono antes de redirigir
+          const bonus = result.data.bonus_percentage || 0;
+          const total = result.data.total_with_bonus || amount;
+          if (bonus > 0) {
+            alert(
+              `🎉 ¡Bono del ${bonus}%!\n\n` +
+              `Pagas: $${amount}\n` +
+              `Recibes: $${total.toFixed(2)}\n\n` +
+              `Redirigiendo a PayPal...`
+            );
+          }
+          // Cerrar modal antes de redirigir
+          closePayment();
+          // Redirigir a PayPal
+          window.location.href = result.data.approval_url;
+        } else {
+          alert(`❌ Error: ${result.error || 'No se pudo procesar la recarga con PayPal'}`);
+        }
+        return;
+      }
+
+      // Para otros métodos (CARD, SINPE, BINANCE)
       const result = await rechargeWallet({
         amount,
         method: method as 'CARD' | 'SINPE' | 'BINANCE'
@@ -190,7 +281,8 @@ export function PaymentProvider({ children }: { children: ReactNode }) {
             service: 'Recarga de Billetera',
             plan: `$${amount} USD`,
             order: result.data.order_number,
-            phone: result.data.instructions?.phone || '8888-8888'
+            phone: result.data.instructions?.phone || '8888-8888',
+            type: 'recharge'
           });
           window.location.href = `/sinpe-payment?${params.toString()}`;
         } else if (method === 'BINANCE') {

@@ -620,12 +620,118 @@ export class AuthController {
             break;
           }
 
-          if (checkResult.rows[0].event_type === 'purchase_completed') {
-            console.warn(`⚠️ Order ${orderId} already completed (idempotency)`);
+          const eventType = checkResult.rows[0].event_type;
+          const payload = checkResult.rows[0].payload;
+
+          // Verificar idempotencia según el tipo de orden
+          if (eventType === 'purchase_completed' || eventType === 'wallet_recharge_completed' || eventType === 'renewal_completed') {
+            console.warn(`⚠️ Order ${orderId} already completed (idempotency): ${eventType}`);
             break;
           }
 
-          const payload = checkResult.rows[0].payload;
+          // ========== PROCESAR RECARGA DE BILLETERA ==========
+          if (eventType === 'wallet_recharge_pending') {
+            // Obtener tenant_id desde la orden en billing_events
+            const orderInfo = await this.pg.query(
+              `SELECT tenant_id FROM billing_events WHERE id = $1`,
+              [orderId]
+            );
+            
+            if (orderInfo.rows.length === 0) {
+              console.error(`❌ Order ${orderId} not found in billing_events`);
+              break;
+            }
+            
+            const tenantId = orderInfo.rows[0].tenant_id;
+            const amount = parseFloat(payload.amount || '0');
+            const totalWithBonus = parseFloat(payload.total_with_bonus || amount.toString());
+
+            const client = await this.pg.connect();
+            try {
+              await client.query('BEGIN');
+
+              // 1. Actualizar balance de la billetera
+              await client.query(
+                `UPDATE tenants SET wallet_balance = wallet_balance + $1 WHERE id = $2`,
+                [totalWithBonus, tenantId]
+              );
+
+              // 2. Actualizar orden a completada
+              await client.query(
+                `UPDATE billing_events 
+                 SET event_type = 'wallet_recharge_completed', 
+                     payload = jsonb_set(payload, '{status}', '"completed"')
+                 WHERE id = $1`,
+                [orderId]
+              );
+
+              await client.query('COMMIT');
+              console.log(`✅ PayPal wallet recharged: $${totalWithBonus} for tenant ${tenantId} (original: $${amount})`);
+            } catch (error) {
+              await client.query('ROLLBACK');
+              console.error('Error processing PayPal wallet recharge:', error);
+            } finally {
+              client.release();
+            }
+            break;
+          }
+
+          // ========== PROCESAR RENOVACIÓN DE SERVICIO ==========
+          if (eventType === 'renewal_pending') {
+            const serviceId = payload.service_id;
+            
+            const client = await this.pg.connect();
+            try {
+              await client.query('BEGIN');
+
+              // 1. Verificar idempotencia CON LOCK - si ya se procesó, salir
+              const checkResult = await client.query(
+                `SELECT event_type FROM billing_events WHERE id = $1 FOR UPDATE`,
+                [orderId]
+              );
+
+              if (checkResult.rows.length > 0 && checkResult.rows[0].event_type === 'renewal_completed') {
+                console.log(`⚠️ PayPal renewal order ${orderId} already processed (idempotent check), skipping`);
+                await client.query('ROLLBACK');
+                break;
+              }
+
+              // 2. Actualizar orden a completada
+              await client.query(
+                `UPDATE billing_events 
+                 SET event_type = 'renewal_completed', 
+                     payload = jsonb_set(
+                       jsonb_set(payload, '{payment_status}', '"completed"'),
+                       '{status}', '"completed"'
+                     )
+                 WHERE id = $1`,
+                [orderId]
+              );
+              
+              // 3. Extender servicio por 30 días
+              await client.query(
+                `UPDATE services 
+                 SET expires_at = CASE 
+                   WHEN expires_at > NOW() THEN expires_at + INTERVAL '30 days'
+                   ELSE NOW() + INTERVAL '30 days'
+                 END,
+                 status = 'active'
+                 WHERE id = $1`,
+                [serviceId]
+              );
+              
+              await client.query('COMMIT');
+              console.log(`✅ PayPal service ${serviceId} renewed for 30 days`);
+            } catch (error) {
+              await client.query('ROLLBACK');
+              console.error('Error processing PayPal service renewal:', error);
+            } finally {
+              client.release();
+            }
+            break;
+          }
+
+          // ========== PROCESAR COMPRA DE CATÁLOGO ==========
           const productCode = payload.product_code;
           const quantity = parseInt(payload.quantity || '1');
 

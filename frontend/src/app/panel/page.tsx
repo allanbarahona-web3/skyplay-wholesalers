@@ -109,17 +109,102 @@ export default function PanelMayoristaPage() {
   const [showCredentialsModal, setShowCredentialsModal] = useState(false);
   const [purchaseDetails, setPurchaseDetails] = useState<any>(null);
   
+  // Estado para modal de confirmación de renovación
+  const [showRenewalModal, setShowRenewalModal] = useState(false);
+  const [renewalDetails, setRenewalDetails] = useState<any>(null);
+  
   // Estado para ver credenciales de servicios existentes
   const [viewingService, setViewingService] = useState<Service | null>(null);
 
-  // Detectar callback de PayPal/Stripe
+  // Detectar callback de PayPal/Stripe/Wallet
   useEffect(() => {
     const payment = searchParams?.get('payment');
     const orderNumber = searchParams?.get('order');
     const provider = searchParams?.get('provider');
+    const orderType = searchParams?.get('type');
 
-    if (payment === 'success' && orderNumber && (provider === 'paypal' || provider === 'stripe')) {
-      // Esperar un momento para que el webhook procese
+    if (payment === 'success' && orderNumber) {
+      // Si es una recarga de billetera, solo mostrar toast y refrescar
+      if (orderType === 'recharge' && (provider === 'paypal' || provider === 'stripe')) {
+        setTimeout(() => {
+          loadOverviewData(); // Recargar datos para actualizar el saldo
+          setToastMsg('✅ ¡Recarga exitosa! Tu saldo ha sido actualizado.');
+          setToastOk(true);
+          window.history.replaceState({}, '', '/panel');
+        }, 3000); // Esperar 3 segundos para que el webhook procese
+        return;
+      }
+
+      // Si es una renovación, mostrar confirmación simple
+      if (orderType === 'renewal') {
+        const serviceId = searchParams?.get('service_id');
+        
+        // Si es renovación con billetera, es inmediata (sin esperar webhook)
+        if (provider === 'wallet' && serviceId) {
+          (async () => {
+            try {
+              // Obtener datos actualizados del servicio
+              const response = await fetch('http://localhost:3000/api/me/overview', {
+                credentials: 'include',
+              });
+              
+              if (response.ok) {
+                const data = await response.json();
+                const renewedService = data.active_services?.find((s: any) => s.id === serviceId);
+                
+                if (renewedService) {
+                  setRenewalDetails({
+                    credentials: [{
+                      email: renewedService.credential_email || '',
+                      password: renewedService.credential_password || '',
+                      profile_name: renewedService.profile_name || '',
+                      pin: renewedService.pin || '',
+                      expires_at: renewedService.expires_at || ''
+                    }],
+                    product_name: renewedService.product_name || renewedService.product_code,
+                    message: 'Tu renovación fue exitosa'
+                  });
+                  setShowRenewalModal(true);
+                  
+                  // Actualizar estado global
+                  loadOverviewData();
+                }
+              }
+            } catch (error) {
+              console.error('Error loading service data:', error);
+            }
+            window.history.replaceState({}, '', '/panel');
+          })();
+          return;
+        }
+        
+        // Para Stripe/PayPal, esperar webhook
+        setTimeout(async () => {
+          try {
+            // Obtener datos del servicio renovado
+            const overviewData = await getOrderCredentials(orderNumber);
+            if (overviewData.ok && overviewData.data) {
+              setRenewalDetails({
+                ...overviewData.data,
+                message: 'Tu renovación fue exitosa'
+              });
+              setShowRenewalModal(true);
+              // Recargar servicios
+              loadOverviewData();
+            }
+            window.history.replaceState({}, '', '/panel');
+          } catch (error) {
+            console.error('Error fetching renewal details:', error);
+            setToastMsg('✅ ¡Renovación exitosa!');
+            setToastOk(true);
+            loadOverviewData();
+            window.history.replaceState({}, '', '/panel');
+          }
+        }, 3000); // Esperar 3 segundos para que el webhook procese
+        return;
+      }
+
+      // Para compras de productos, mostrar credenciales
       setTimeout(async () => {
         try {
           const result = await getOrderCredentials(orderNumber);
@@ -207,7 +292,7 @@ export default function PanelMayoristaPage() {
   }, [toastMsg]);
 
   // Acciones
-  const { openPayment } = usePayment();
+  const { openPayment, walletBalance, refreshWallet } = usePayment();
 
   const handleRenew = (service: Service) => {
     // Usar el modal global de pagos
@@ -215,7 +300,9 @@ export default function PanelMayoristaPage() {
       service: service.product_name,
       plan: 'Renovación 1 mes',
       price: 7.95, // Precio con descuento
-      productCode: service.product_code
+      productCode: service.product_code,
+      isRenewal: true, // Marcar como renovación
+      serviceId: service.id // Pasar el ID del servicio
     });
   };
 
@@ -279,7 +366,23 @@ export default function PanelMayoristaPage() {
             <div className="apple-divider"></div>
             <span className="apple-header-title">Panel Mayorista</span>
           </div>
+          
+          <div className="apple-header-center">
+            <input
+              id="q"
+              className="apple-search"
+              placeholder="Buscar por cuenta, producto o credencial..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              maxLength={100}
+              autoComplete="off"
+            />
+          </div>
+
           <div className="apple-header-right">
+            <div className="apple-wallet">
+              💰 ${walletBalance.toFixed(2)}
+            </div>
             <button className="apple-btn-link" onClick={() => router.push("/")}>
               <span>🏪</span> Catálogo Mayorista
             </button>
@@ -399,7 +502,7 @@ export default function PanelMayoristaPage() {
               Vencidos <span className="pill-count">{services.filter(s => getServiceStatus(s) === "expired").length}</span>
             </button>
           </div>
-          <div className="table-container">
+          <div className="table-container" style={{ maxHeight: '600px', overflowY: 'auto', overflowX: 'auto' }}>
             <table className="premium-table">
               <thead>
                 <tr>
@@ -496,7 +599,7 @@ export default function PanelMayoristaPage() {
             <button className={`pill${period === "90" ? " active" : ""}`} onClick={() => setPeriod("90")}>3 meses</button>
           </div>
           
-          <div className="table-container">
+          <div className="table-container" style={{ maxHeight: '600px', overflowY: 'auto', overflowX: 'auto' }}>
             <table className="premium-table">
               <thead>
                 <tr>
@@ -610,6 +713,78 @@ export default function PanelMayoristaPage() {
             discount_applied: purchaseDetails.discount_applied,
           }}
         />
+      )}
+
+      {/* Modal de Confirmación de Renovación */}
+      {showRenewalModal && renewalDetails && (
+        <div className="modal open">
+          <div className="modal-content" style={{ maxWidth: '500px' }}>
+            <div className="modal-head">
+              <h2 className="modal-title">✅ Renovación Exitosa</h2>
+              <button 
+                className="modal-close-btn" 
+                onClick={() => {
+                  setShowRenewalModal(false);
+                  setRenewalDetails(null);
+                }}
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="modal-body" style={{ padding: '30px', textAlign: 'center' }}>
+              <div style={{ fontSize: '48px', marginBottom: '20px' }}>✨</div>
+              
+              <h3 style={{ fontSize: '20px', marginBottom: '10px', color: '#333' }}>
+                Tu renovación fue exitosa
+              </h3>
+
+              {renewalDetails.credentials && renewalDetails.credentials[0] && (
+                <div style={{ 
+                  background: '#f5f5f5', 
+                  padding: '20px', 
+                  borderRadius: '8px',
+                  marginTop: '20px',
+                  marginBottom: '20px',
+                  textAlign: 'left'
+                }}>
+                  <p style={{ marginBottom: '10px', fontSize: '14px', color: '#666' }}>
+                    <strong>Cuenta:</strong> {renewalDetails.credentials[0].email}
+                  </p>
+                  {renewalDetails.credentials[0].profile_name && (
+                    <p style={{ marginBottom: '10px', fontSize: '14px', color: '#666' }}>
+                      <strong>Perfil:</strong> {renewalDetails.credentials[0].profile_name}
+                    </p>
+                  )}
+                  <p style={{ marginBottom: '0', fontSize: '14px', color: '#666' }}>
+                    <strong>Válido hasta:</strong> {
+                      new Date(renewalDetails.credentials[0].expires_at || Date.now() + 30*24*60*60*1000)
+                        .toLocaleDateString('es-ES', { 
+                          day: '2-digit', 
+                          month: '2-digit', 
+                          year: 'numeric' 
+                        })
+                    }
+                  </p>
+                </div>
+              )}
+
+              <p style={{ fontSize: '14px', color: '#999', marginBottom: '20px' }}>
+                📧 Revisa tu Panel para los detalles de la renovación
+              </p>
+
+              <button 
+                className="btn-primary-full"
+                onClick={() => {
+                  setShowRenewalModal(false);
+                  setRenewalDetails(null);
+                }}
+              >
+                Aceptar
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Modal para ver credenciales de servicios existentes */}

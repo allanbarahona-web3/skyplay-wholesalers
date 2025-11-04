@@ -8,9 +8,13 @@ interface CreateOrderParams {
   metadata: {
     order_id: string;
     tenant_id: string;
-    product_code: string;
-    quantity: string;
-    order_type: 'catalog_purchase' | 'wallet_recharge';
+    product_code?: string;
+    quantity?: string;
+    amount?: string;
+    bonus_percentage?: string;
+    total_with_bonus?: string;
+    service_id?: string;
+    order_type: 'catalog_purchase' | 'wallet_recharge' | 'renewal';
   };
 }
 
@@ -100,6 +104,10 @@ export class PayPalService {
     try {
       const accessToken = await this.getAccessToken();
 
+      // Determinar el tipo de orden para la URL de retorno
+      const orderType = metadata.order_type === 'wallet_recharge' ? 'recharge' : 
+                        metadata.order_type === 'renewal' ? 'renewal' : 'purchase';
+      
       const orderData = {
         intent: 'CAPTURE',
         purchase_units: [
@@ -117,8 +125,8 @@ export class PayPalService {
           brand_name: 'Skyplay Mayoristas',
           landing_page: 'BILLING',
           user_action: 'PAY_NOW',
-          return_url: `${process.env.FRONTEND_URL || 'http://localhost:3001'}/?payment=success&type=purchase&order=${orderNumber}&provider=paypal`,
-          cancel_url: `${process.env.FRONTEND_URL || 'http://localhost:3001'}/?payment=cancelled&provider=paypal`,
+          return_url: `${process.env.FRONTEND_URL || 'http://localhost:3001'}/panel?payment=success&type=${orderType}&order=${orderNumber}&provider=paypal`,
+          cancel_url: `${process.env.FRONTEND_URL || 'http://localhost:3001'}/panel?payment=cancel`,
         },
       };
 

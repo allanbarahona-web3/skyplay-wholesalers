@@ -256,6 +256,10 @@ export interface WalletRechargeRequest {
   method: 'CARD' | 'SINPE' | 'BINANCE';
 }
 
+export interface PayPalRechargeRequest {
+  amount: number;
+}
+
 export interface WalletRechargeResponse {
   method: string;
   order_number: string;
@@ -269,6 +273,15 @@ export interface WalletRechargeResponse {
     amount?: number;
     message?: string;
   };
+}
+
+export interface PayPalRechargeResponse {
+  order_number: string;
+  paypal_order_id: string;
+  approval_url: string;
+  amount: number;
+  bonus_percentage?: number;
+  total_with_bonus?: number;
 }
 
 /**
@@ -310,5 +323,64 @@ export async function rechargeWallet(data: WalletRechargeRequest): Promise<ApiRe
   return apiFetch('/services/wallet/recharge', {
     method: 'POST',
     body: JSON.stringify(data),
+  });
+}
+
+/**
+ * Recargar billetera con PayPal
+ */
+export async function rechargeWalletPayPal(data: PayPalRechargeRequest): Promise<ApiResponse<PayPalRechargeResponse>> {
+  return apiFetch('/services/checkout/paypal/recharge', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+// ============================================================================
+// RENEWAL ENDPOINTS
+// ============================================================================
+
+/**
+ * Iniciar renovación de un servicio (crea billing_event renewal_pending)
+ */
+export async function initiateRenewal(serviceId: string): Promise<ApiResponse<{
+  order_id: number;
+  service_id: string;
+  amount: number;
+  original_amount: number;
+  discount_applied: number;
+  currency: string;
+}>> {
+  return apiFetch(`/services/${serviceId}/renew`, {
+    method: 'POST',
+  });
+}
+
+/**
+ * Renovar servicio desde billetera (pago directo sin checkout)
+ */
+export async function renewFromWallet(serviceId: string): Promise<ApiResponse<{
+  ok: boolean;
+  service_id: string;
+  new_expires_at: string;
+  message: string;
+}>> {
+  return apiFetch(`/services/${serviceId}/renew/wallet`, {
+    method: 'POST',
+  });
+}
+
+/**
+ * Crear checkout de Stripe para renovación
+ */
+export async function createRenewalCheckout(serviceId: string, method: 'stripe' | 'paypal' = 'stripe'): Promise<ApiResponse<{
+  method: string;
+  checkout_url?: string;
+  paypal_order_id?: string;
+  approval_url?: string;
+  order_number: string;
+}>> {
+  return apiFetch(`/services/${serviceId}/checkout?method=${method}`, {
+    method: 'POST',
   });
 }

@@ -8,11 +8,18 @@ export default function SinpeInstructionsPage() {
   const amount = params.get("amount") || "0.00";
   const service = params.get("service") || "Servicio";
   const plan = params.get("plan") || "Plan";
+  const orderType = params.get("type") || "purchase";
   const [showSteps, setShowSteps] = React.useState(false);
 
   const confirmPayment = () => {
-    // TODO: Enviar notificación al backend
-    alert("¡Gracias! Verificaremos tu pago y activaremos tu suscripción pronto.");
+    // Detectar si es una recarga de billetera
+    const isRecharge = orderType === "recharge" || service === "Recarga de Billetera";
+    
+    if (isRecharge) {
+      alert("¡Gracias! Verificaremos tu pago y tu saldo se actualizará en 5-15 minutos.");
+    } else {
+      alert("¡Gracias! Verificaremos tu pago y activaremos tu suscripción pronto.");
+    }
     router.push("/panel");
   };
 

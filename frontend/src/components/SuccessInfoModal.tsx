@@ -74,7 +74,7 @@ export default function SuccessInfoModal({ isOpen, onClose, provider }: SuccessI
                 Email en camino
               </p>
               <p style={{ margin: 0, fontSize: '14px', color: '#166534', lineHeight: '1.5' }}>
-                Tus credenciales serán enviadas a tu correo en los próximos <strong>2 minutos</strong>.
+                Tus credenciales serán enviadas a tu correo en los próximos <strong>1 minuto</strong>.
               </p>
             </div>
           </div>

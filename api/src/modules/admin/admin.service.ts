@@ -129,11 +129,59 @@ export class AdminService {
         throw new Error('Order not found');
       }
 
-      if (checkResult.rows[0].event_type !== 'purchase_pending') {
-        throw new Error(`Order already processed with status: ${checkResult.rows[0].event_type}`);
+      const eventType = checkResult.rows[0].event_type;
+
+      // Si ya se procesó, rechazar
+      if (eventType === 'purchase_completed' || eventType === 'wallet_recharge_completed') {
+        throw new Error(`Order already processed with status: ${eventType}`);
       }
 
-      // 2. Obtener detalles de la orden
+      // ========== PROCESAR RECARGA DE BILLETERA ==========
+      if (eventType === 'wallet_recharge_pending') {
+        const orderResult = await client.query(
+          `SELECT tenant_id, payload FROM billing_events WHERE id = $1`,
+          [orderId]
+        );
+
+        if (orderResult.rows.length === 0) {
+          throw new Error('Order not found');
+        }
+
+        const { tenant_id, payload } = orderResult.rows[0];
+        const amount = parseFloat(payload.amount || '0');
+
+        // Actualizar balance de la billetera
+        await client.query(
+          `UPDATE tenants SET wallet_balance = wallet_balance + $1 WHERE id = $2`,
+          [amount, tenant_id]
+        );
+
+        // Actualizar orden a completada
+        await client.query(
+          `UPDATE billing_events 
+           SET event_type = 'wallet_recharge_completed', 
+               payload = jsonb_set(payload, '{payment_status}', '"completed"'),
+               payload = jsonb_set(payload, '{confirmed_at}', to_jsonb(NOW()::text))
+           WHERE id = $1`,
+          [orderId]
+        );
+
+        await client.query('COMMIT');
+        console.log(`✅ SINPE wallet recharge confirmed: $${amount} for tenant ${tenant_id}`);
+        
+        return {
+          message: 'Wallet recharge confirmed successfully',
+          amount,
+          tenant_id
+        };
+      }
+
+      // ========== PROCESAR COMPRA DE PRODUCTO ==========
+      if (eventType !== 'purchase_pending') {
+        throw new Error(`Invalid order status: ${eventType}`);
+      }
+
+      // 2. Obtener detalles de la orden de compra
       const orderResult = await client.query(
         `SELECT tenant_id, payload FROM billing_events WHERE id = $1 AND event_type = 'purchase_pending' AND source = 'SINPE'`,
         [orderId]

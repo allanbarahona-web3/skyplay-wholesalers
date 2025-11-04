@@ -685,6 +685,91 @@ export class ServicesController {
     }
   }
 
+  // Endpoint para recargar billetera con PayPal
+  @Post('checkout/paypal/recharge')
+  @UseGuards(AuthGuard)
+  async createPayPalRechargeCheckout(
+    @Body() body: { amount: number },
+    @Req() req: Request,
+    @Res() res: Response
+  ) {
+    const { tenant_id } = (req as any).user as JWTPayload;
+    const { amount } = body;
+
+    if (!amount || amount < 1) {
+      throw new HttpException('Amount must be at least $1', 400);
+    }
+
+    try {
+      // Generar order number único
+      const orderNumber = this.generateOrderNumber();
+
+      // Calcular bono según el monto (mismo que Stripe)
+      let bonus = 0;
+      if (amount >= 100) bonus = 0.40;
+      else if (amount >= 50) bonus = 0.30;
+      else if (amount >= 25) bonus = 0.20;
+      else if (amount >= 10) bonus = 0.10;
+      
+      const totalWithBonus = amount * (1 + bonus);
+
+      // Crear registro en billing_events (pendiente de pago)
+      const eventResult = await this.pg.query(
+        `INSERT INTO billing_events (tenant_id, event_type, source, order_number, payload)
+         VALUES ($1, 'wallet_recharge_pending', 'PAYPAL', $2, $3)
+         RETURNING id`,
+        [
+          tenant_id,
+          orderNumber,
+          JSON.stringify({
+            amount,
+            bonus_percentage: bonus * 100,
+            total_with_bonus: totalWithBonus,
+            method: 'PAYPAL',
+            status: 'pending'
+          })
+        ]
+      );
+
+      const orderId = eventResult.rows[0].id;
+
+      // Crear orden de PayPal
+      const paypalOrder = await this.paypalService.createOrder({
+        amount: amount, // PayPal cobra solo el monto original, el bono lo damos nosotros
+        currency: 'USD',
+        description: bonus > 0 
+          ? `Recarga de Billetera: $${amount} + ${(bonus * 100)}% bono = $${totalWithBonus.toFixed(2)}`
+          : `Recarga de Billetera: $${amount}`,
+        orderNumber,
+        metadata: {
+          order_id: orderId.toString(),
+          tenant_id: tenant_id.toString(),
+          amount: amount.toString(),
+          bonus_percentage: (bonus * 100).toString(),
+          total_with_bonus: totalWithBonus.toString(),
+          order_type: 'wallet_recharge'
+        }
+      });
+
+      return res.json({
+        method: 'PAYPAL',
+        order_id: orderId,
+        order_number: orderNumber,
+        paypal_order_id: paypalOrder.orderId,
+        approval_url: paypalOrder.approvalUrl,
+        amount,
+        bonus_percentage: bonus * 100,
+        total_with_bonus: totalWithBonus
+      });
+    } catch (error) {
+      console.error('Error creating PayPal recharge:', error);
+      if (error instanceof HttpException) {
+        throw error;
+      }
+      throw new HttpException('Error creating PayPal recharge', 500);
+    }
+  }
+
   @Post(':id/renew')
   @UseGuards(AuthGuard) // Proteger este endpoint
 async renew(@Param('id') serviceId: string, @Req() req: Request, @Res() res: Response) {
@@ -743,12 +828,148 @@ private async createOrder(tenantId: number, service: any, finalPrice: number) {
   return rows[0].id;
 }
 
+@Post(':id/renew/wallet')
+@UseGuards(AuthGuard)
+async renewFromWallet(@Param('id') serviceId: string, @Req() req: Request, @Res() res: Response) {
+  const { tenant_id } = (req as any).user as JWTPayload;
+  if (!tenant_id) throw new HttpException('Unauthorized', 401);
+
+  const client = await this.pg.connect();
+  try {
+    await client.query('BEGIN');
+
+    // 1. Obtener servicio (con lock)
+    const srvQ = `SELECT * FROM services WHERE id = $1 AND tenant_id = $2 FOR UPDATE`;
+    const { rows } = await client.query(srvQ, [serviceId, tenant_id]);
+    const service = rows[0];
+
+    if (!service) {
+      await client.query('ROLLBACK');
+      throw new HttpException('Service not found', 404);
+    }
+
+    // 2. Obtener precio del producto
+    const priceQ = `SELECT price FROM products WHERE code = $1`;
+    const { rows: priceRows } = await client.query(priceQ, [service.product_code]);
+    if (priceRows.length === 0) {
+      await client.query('ROLLBACK');
+      throw new HttpException('Product not found', 404);
+    }
+    service.price = priceRows[0].price;
+
+    // 3. Verificar suscripción para descuento
+    const subQ = `SELECT status, current_period_end FROM subscriptions 
+                  WHERE tenant_id = $1 AND current_period_end IS NOT NULL 
+                  ORDER BY current_period_end DESC LIMIT 1`;
+    const { rows: subRows } = await client.query(subQ, [tenant_id]);
+    let hasActiveSubscription = false;
+    if (subRows.length > 0) {
+      const sub = subRows[0];
+      if (sub.current_period_end && new Date(sub.current_period_end) > new Date()) {
+        hasActiveSubscription = true;
+      }
+    }
+
+    const originalPrice = parseFloat(service.price);
+    const discount = hasActiveSubscription ? 0.30 : 0;
+    const finalPrice = originalPrice * (1 - discount);
+
+    // 4. Obtener balance del tenant
+    const tenantQ = `SELECT wallet_balance FROM tenants WHERE id = $1 FOR UPDATE`;
+    const { rows: tenantRows } = await client.query(tenantQ, [tenant_id]);
+    const tenant = tenantRows[0];
+
+    if (!tenant) {
+      await client.query('ROLLBACK');
+      throw new HttpException('Tenant not found', 404);
+    }
+
+    const currentBalance = parseFloat(tenant.wallet_balance || '0');
+    
+    if (currentBalance < finalPrice) {
+      await client.query('ROLLBACK');
+      throw new HttpException(
+        `Insufficient balance. Required: $${finalPrice.toFixed(2)}, Available: $${currentBalance.toFixed(2)}`,
+        400
+      );
+    }
+
+    // 5. Descontar del balance
+    const newBalance = currentBalance - finalPrice;
+    await client.query(
+      `UPDATE tenants SET wallet_balance = $1 WHERE id = $2`,
+      [newBalance, tenant_id]
+    );
+
+    // 6. Extender servicio por 30 días
+    await client.query(
+      `UPDATE services 
+       SET expires_at = CASE 
+         WHEN expires_at > NOW() THEN expires_at + INTERVAL '30 days'
+         ELSE NOW() + INTERVAL '30 days'
+       END,
+       status = 'active'
+       WHERE id = $1`,
+      [serviceId]
+    );
+
+    // 7. Registrar billing_event
+    const orderNumber = `WALLET-RENEW-${Date.now()}`;
+    await client.query(
+      `INSERT INTO billing_events (tenant_id, event_type, source, order_number, payload)
+       VALUES ($1, 'renewal_completed', 'WALLET', $2, $3)`,
+      [tenant_id, orderNumber, JSON.stringify({
+        service_id: serviceId,
+        product_code: service.product_code,
+        amount: finalPrice,
+        original_amount: originalPrice,
+        discount_applied: discount,
+        currency: 'USD',
+        status: 'completed'
+      })]
+    );
+
+    // 7. Obtener nueva fecha de expiración
+    const { rows: updatedRows } = await client.query(
+      `SELECT expires_at FROM services WHERE id = $1`,
+      [serviceId]
+    );
+
+    await client.query('COMMIT');
+
+    return res.json({
+      ok: true,
+      service_id: serviceId,
+      new_expires_at: updatedRows[0].expires_at,
+      amount_charged: finalPrice,
+      new_balance: newBalance,
+      message: 'Service renewed successfully'
+    });
+  } catch (err: any) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
  @Post(':id/checkout')
   @UseGuards(AuthGuard) // Proteger este endpoint
-async createCheckout(@Param('id') serviceId: string, @Req() req: Request, @Res() res: Response) {
+async createCheckout(
+  @Param('id') serviceId: string, 
+  @Req() req: Request, 
+  @Res() res: Response
+) {
   console.log('>>> createCheckout called for serviceId=', serviceId);
   const { tenant_id } = (req as any).user as JWTPayload;
   if (!tenant_id) throw new HttpException('Unauthorized', 401);
+
+  // Obtener método de pago desde query params (default: stripe)
+  const method = (req.query.method as string)?.toLowerCase() || 'stripe';
+  
+  if (!['stripe', 'paypal'].includes(method)) {
+    throw new HttpException('Invalid payment method. Use "stripe" or "paypal"', 400);
+  }
 
   // Obtener orden pendiente y precio
   const ordQ = `SELECT be.id as order_id, be.payload, p.price, p.name as product_name
@@ -785,43 +1006,72 @@ async createCheckout(@Param('id') serviceId: string, @Req() req: Request, @Res()
   // Generar order number único
   const orderNumber = this.generateOrderNumber();
   
-  // Guardar order number en DB
+  // Actualizar order number y source en DB
   await this.pg.query(
-    `UPDATE billing_events SET order_number = $1 WHERE id = $2`,
-    [orderNumber, order.order_id]
+    `UPDATE billing_events SET order_number = $1, source = $2 WHERE id = $3`,
+    [orderNumber, method.toUpperCase(), order.order_id]
   );
 
-  // Crear Stripe Checkout
-  const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
-  const session = await stripe.checkout.sessions.create({
-    line_items: [{
-      price_data: {
-        currency: 'usd',
-        product_data: { 
-          name: `Orden #${orderNumber}`,
-          description: hasActiveSubscription 
-            ? 'Servicio digital - Con descuento preferencial (-30%)'
-            : 'Servicio digital - Renovación mensual'
+  // ========== CREAR CHECKOUT SEGÚN MÉTODO ==========
+  if (method === 'paypal') {
+    // Crear orden PayPal para renovación
+    const paypalOrder = await this.paypalService.createOrder({
+      amount: finalPrice,
+      currency: 'USD',
+      description: hasActiveSubscription 
+        ? `Renovación ${order.product_name} - Con descuento preferencial (-30%)`
+        : `Renovación ${order.product_name}`,
+      orderNumber,
+      metadata: {
+        order_id: order.order_id.toString(),
+        tenant_id: tenant_id.toString(),
+        service_id: serviceId,
+        order_type: 'renewal'
+      }
+    });
+
+    return res.json({ 
+      method: 'PAYPAL',
+      paypal_order_id: paypalOrder.orderId,
+      approval_url: paypalOrder.approvalUrl,
+      order_number: orderNumber 
+    });
+  } else {
+    // Crear Stripe Checkout (comportamiento original)
+    const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+    const session = await stripe.checkout.sessions.create({
+      line_items: [{
+        price_data: {
+          currency: 'usd',
+          product_data: { 
+            name: `Orden #${orderNumber}`,
+            description: hasActiveSubscription 
+              ? 'Servicio digital - Con descuento preferencial (-30%)'
+              : 'Servicio digital - Renovación mensual'
+          },
+          unit_amount: Math.round(finalPrice * 100)
         },
-        unit_amount: Math.round(finalPrice * 100)
+        quantity: 1
+      }],
+      mode: 'payment',
+      metadata: {
+        order_id: order.order_id,
+        order_number: orderNumber,
+        service_id: serviceId,
+        tenant_id: tenant_id.toString(),
+        order_type: 'renewal'
       },
-      quantity: 1
-    }],
-    mode: 'payment',
-    metadata: {
-      order_id: order.order_id,
-      order_number: orderNumber,
-      service_id: serviceId,
-      tenant_id: tenant_id.toString(),
-      order_type: 'renewal'
-    },
-    success_url: `${process.env.FRONTEND_URL}/panel_mayorista.html?payment=success&order=${orderNumber}`,
-    cancel_url: `${process.env.FRONTEND_URL}/panel_mayorista.html?payment=cancel`
-  });
+      success_url: `${process.env.FRONTEND_URL}/panel?payment=success&type=renewal&order=${orderNumber}&provider=stripe`,
+      cancel_url: `${process.env.FRONTEND_URL}/panel?payment=cancel`
+    });
 
-  return res.json({ checkout_url: session.url, order_number: orderNumber });
-
+    return res.json({ 
+      method: 'STRIPE',
+      checkout_url: session.url, 
+      order_number: orderNumber 
+    });
   }
+}
 
   private generateOrderNumber(): string {
     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';

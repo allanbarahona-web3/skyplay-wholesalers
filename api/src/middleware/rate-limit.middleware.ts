@@ -1,4 +1,4 @@
-import rateLimit from 'express-rate-limit';
+import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 
 /**
  * Rate limiter para endpoints de autenticación
@@ -15,11 +15,12 @@ export const loginRateLimiter = rateLimit({
   standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
   legacyHeaders: false, // Disable the `X-RateLimit-*` headers
   
-  // Usar IP + email como clave para rate limiting
+  // Usar IP + email como clave para rate limiting (con soporte IPv6)
   keyGenerator: (req) => {
     const email = req.body?.email || 'unknown';
     const ip = req.ip || req.socket.remoteAddress || 'unknown';
-    return `${ip}:${email}`;
+    const normalizedIp = ipKeyGenerator(ip as string);
+    return `${normalizedIp}:${email}`;
   },
 
   // Skip rate limiting en desarrollo si es necesario
@@ -55,7 +56,8 @@ export const strictRateLimiter = rateLimit({
   keyGenerator: (req) => {
     const email = req.body?.email || 'unknown';
     const ip = req.ip || req.socket.remoteAddress || 'unknown';
-    return `strict:${ip}:${email}`;
+    const normalizedIp = ipKeyGenerator(ip as string);
+    return `strict:${normalizedIp}:${email}`;
   },
 
   handler: (req, res) => {
