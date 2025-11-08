@@ -280,27 +280,36 @@ export default function Home() {
                               Stock: {stock}
                             </p>
                             {basePrice && (
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '8px' }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1 }}>
-                                  {priceInfo.discounted ? (
-                                    <>
-                                      <div style={{ fontSize: '0.85rem', color: 'var(--muted)', textDecoration: 'line-through' }}>
-                                        ${basePrice.toFixed(2)}
-                                      </div>
-                                      <div style={{ fontWeight: 'bold', color: '#22c55e', fontSize: '1.1rem' }}>
-                                        ${priceInfo.price.toFixed(2)}
-                                      </div>
-                                      <div style={{ fontSize: '0.75rem', background: '#22c55e', color: '#000', padding: '2px 6px', borderRadius: '4px', fontWeight: 'bold' }}>
-                                        -20%
-                                      </div>
-                                    </>
-                                  ) : (
-                                    <div style={{ fontSize: '1.1rem', fontWeight: 'bold' }}>
+                              <div style={{ marginTop: '8px' }}>
+                                {/* Precios */}
+                                {priceInfo.discounted ? (
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
+                                    <div style={{ fontSize: '0.9rem', color: '#ef4444', textDecoration: 'line-through', fontWeight: '500' }}>
                                       ${basePrice.toFixed(2)}
                                     </div>
-                                  )}
-                                </div>
-                                <button className="btn small" onClick={() => handleBuy(item.svc, plan)} style={{ background: 'var(--primary)', padding: '6px 14px', fontSize: '0.85rem' }}>
+                                    <div style={{ fontWeight: 'bold', color: '#22c55e', fontSize: '1.15rem' }}>
+                                      ${priceInfo.price.toFixed(2)}
+                                    </div>
+                                    <div style={{ fontSize: '0.75rem', background: '#22c55e', color: '#fff', padding: '2px 8px', borderRadius: '4px', fontWeight: 'bold' }}>
+                                      -20%
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <div style={{ fontSize: '1.15rem', fontWeight: 'bold', marginBottom: '6px' }}>
+                                    ${basePrice.toFixed(2)}
+                                  </div>
+                                )}
+                                {/* Botón Comprar */}
+                                <button 
+                                  className="btn small" 
+                                  onClick={() => handleBuy(item.svc, plan)} 
+                                  style={{ 
+                                    background: 'var(--primary)', 
+                                    padding: '8px 16px', 
+                                    fontSize: '0.85rem',
+                                    width: '100%'
+                                  }}
+                                >
                                   Comprar
                                 </button>
                               </div>
