@@ -950,6 +950,46 @@ async renewFromWallet(@Param('id') serviceId: string, @Req() req: Request, @Res(
 
     await client.query('COMMIT');
 
+    // 8. Enviar email de renovación (después de commit para asegurar que todo se guardó)
+    try {
+      // Obtener datos del usuario
+      const userResult = await this.pg.query(
+        `SELECT email, COALESCE((SELECT tenant_name FROM tenants WHERE id = $1), 'Mayorista') as tenant_name FROM users WHERE id IN (SELECT user_id FROM tenants WHERE id = $1)`,
+        [tenant_id]
+      );
+      const user = userResult.rows[0];
+
+      if (user) {
+        // Obtener credenciales del servicio
+        const credResult = await this.pg.query(
+          `SELECT email, password, profile_name, pin FROM credentials WHERE id = (SELECT credential_id FROM services WHERE id = $1)`,
+          [serviceId]
+        );
+        const cred = credResult.rows[0];
+
+        if (cred) {
+          await this.emailService.sendRenewalEmail({
+            to: user.email,
+            tenantName: user.tenant_name || 'Mayorista',
+            productName: service.product_code,
+            credentials: [{
+              email: cred.email,
+              password: cred.password,
+              profile_name: cred.profile_name,
+              pin: cred.pin
+            }],
+            expiresAt: new Date(updatedRows[0].expires_at).toISOString(),
+            orderNumber: orderNumber,
+            totalPrice: finalPrice,
+            discountApplied: discount * 100
+          }).catch(err => console.error('Error sending renewal email:', err));
+        }
+      }
+    } catch (emailError) {
+      console.error('Error in renewal email process:', emailError);
+      // No lanzar error - el email es secundario, la renovación ya fue exitosa
+    }
+
     return res.json({
       ok: true,
       service_id: serviceId,

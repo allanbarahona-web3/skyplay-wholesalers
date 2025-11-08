@@ -471,6 +471,57 @@ export class AuthController {
       
       await client.query('COMMIT');
       console.log(`✅ Service ${serviceId} renewed for 30 days`);
+
+      // Enviar email de renovación (después de commit)
+      try {
+        // Obtener datos del servicio y usuario
+        const serviceData = await this.pg.query(
+          `SELECT s.credential_id, s.product_code, s.expires_at, u.email, COALESCE(t.name, 'Mayorista') as tenant_name
+           FROM services s
+           JOIN tenants t ON s.tenant_id = t.id
+           JOIN users u ON t.id = (SELECT tenant_id FROM tenants WHERE id = t.id LIMIT 1)
+           WHERE s.id = $1`,
+          [serviceId]
+        );
+        const srvData = serviceData.rows[0];
+
+        if (srvData && srvData.credential_id) {
+          // Obtener credenciales
+          const credResult = await this.pg.query(
+            `SELECT email, password, profile_name, pin FROM credentials WHERE id = $1`,
+            [srvData.credential_id]
+          );
+          const cred = credResult.rows[0];
+
+          if (cred) {
+            // Obtener el payload del evento para obtener el precio
+            const eventData = await this.pg.query(
+              `SELECT payload FROM billing_events WHERE id = $1`,
+              [orderId]
+            );
+            const event = eventData.rows[0];
+            const eventPayload = event?.payload || {};
+
+            await this.emailService.sendRenewalEmail({
+              to: srvData.email,
+              tenantName: srvData.tenant_name,
+              productName: srvData.product_code,
+              credentials: [{
+                email: cred.email,
+                password: cred.password,
+                profile_name: cred.profile_name,
+                pin: cred.pin
+              }],
+              expiresAt: new Date(srvData.expires_at).toISOString(),
+              orderNumber: session.metadata.order_number,
+              totalPrice: eventPayload.unit_price || eventPayload.amount || 0,
+              discountApplied: eventPayload.discount_applied ? Math.round(eventPayload.discount_applied * 100) : 0
+            }).catch(err => console.error('Error sending renewal email (Stripe):', err));
+          }
+        }
+      } catch (emailError) {
+        console.error('Error in renewal email process (Stripe):', emailError);
+      }
     } catch (err: any) {
       await client.query('ROLLBACK');
       console.error('Error processing service renewal:', err.message);
@@ -782,6 +833,49 @@ export class AuthController {
               
               await client.query('COMMIT');
               console.log(`✅ PayPal service ${serviceId} renewed for 30 days`);
+
+              // Enviar email de renovación (después de commit)
+              try {
+                // Obtener datos del servicio y usuario
+                const serviceData = await this.pg.query(
+                  `SELECT s.credential_id, s.product_code, s.expires_at, u.email, COALESCE(t.name, 'Mayorista') as tenant_name
+                   FROM services s
+                   JOIN tenants t ON s.tenant_id = t.id
+                   JOIN users u ON t.id = (SELECT tenant_id FROM tenants WHERE id = t.id LIMIT 1)
+                   WHERE s.id = $1`,
+                  [serviceId]
+                );
+                const srvData = serviceData.rows[0];
+
+                if (srvData && srvData.credential_id) {
+                  // Obtener credenciales
+                  const credResult = await this.pg.query(
+                    `SELECT email, password, profile_name, pin FROM credentials WHERE id = $1`,
+                    [srvData.credential_id]
+                  );
+                  const cred = credResult.rows[0];
+
+                  if (cred) {
+                    await this.emailService.sendRenewalEmail({
+                      to: srvData.email,
+                      tenantName: srvData.tenant_name,
+                      productName: srvData.product_code,
+                      credentials: [{
+                        email: cred.email,
+                        password: cred.password,
+                        profile_name: cred.profile_name,
+                        pin: cred.pin
+                      }],
+                      expiresAt: new Date(srvData.expires_at).toISOString(),
+                      orderNumber: payload.order_number,
+                      totalPrice: payload.unit_price || payload.amount || 0,
+                      discountApplied: payload.discount_applied ? Math.round(payload.discount_applied * 100) : 0
+                    }).catch(err => console.error('Error sending renewal email (PayPal):', err));
+                  }
+                }
+              } catch (emailError) {
+                console.error('Error in renewal email process (PayPal):', emailError);
+              }
             } catch (error) {
               await client.query('ROLLBACK');
               console.error('Error processing PayPal service renewal:', error);
