@@ -87,9 +87,159 @@ export class SubscriptionsController {
       throw new HttpException('Invalid subscription data', 400);
     }
 
-    // TODO: Implementar PayPal checkout para suscripciones
-    // Por ahora, retornar error informativo
-    throw new HttpException('PayPal subscription checkout en desarrollo', 501);
+    const billingCycles: { [key: string]: { displayName: string; interval_unit: string; frequency: number } } = {
+      monthly: { displayName: 'Mensual', interval_unit: 'MONTH', frequency: 1 },
+      quarterly: { displayName: '3 Meses', interval_unit: 'MONTH', frequency: 3 },
+      semiannual: { displayName: '6 Meses', interval_unit: 'MONTH', frequency: 6 }
+    };
+
+    const cycle = billingCycles[billingCycle];
+    if (!cycle) throw new HttpException('Invalid billing cycle', 400);
+
+    const productNames: { [key: string]: string } = {
+      'subscription-pref': 'Suscripción Preferencial',
+      'crm-basic': 'CRM PLUS',
+      'crm-pro': 'CRM PRO',
+      'tienda': 'Tienda Personalizada'
+    };
+
+    const productName = productNames[subscriptionType] || 'Suscripción';
+    const planName = `${productName} ${cycle.displayName}`;
+    const planId = `SKYPLAY-${subscriptionType.toUpperCase()}-${billingCycle.toUpperCase()}-${Date.now()}`;
+
+    try {
+      // Crear plan de suscripción en PayPal
+      const planResponse = await fetch('https://api-m.paypal.com/v1/billing/plans', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${await this.getPayPalAccessToken()}`
+        },
+        body: JSON.stringify({
+          product_id: process.env.PAYPAL_PRODUCT_ID || 'SKYPLAY_SUBSCRIPTIONS',
+          name: planName,
+          description: `Suscripción a ${productName}`,
+          status: 'ACTIVE',
+          billing_cycles: [
+            {
+              frequency: {
+                interval_unit: cycle.interval_unit,
+                interval_count: cycle.frequency
+              },
+              tenure_type: 'REGULAR',
+              sequence: 1,
+              total_cycles: 0, // 0 = indefinido (hasta que cancele)
+              pricing_scheme: {
+                fixed_price: {
+                  value: price.toFixed(2),
+                  currency_code: 'USD'
+                }
+              }
+            }
+          ],
+          payment_preferences: {
+            auto_bill_outstanding: true,
+            setup_fee_failure_action: 'CANCEL',
+            payment_failure_threshold: 3
+          }
+        })
+      });
+
+      if (!planResponse.ok) {
+        const errorData = await planResponse.json();
+        console.error('PayPal plan creation error:', errorData);
+        throw new HttpException('Error creating PayPal plan', 500);
+      }
+
+      const plan = await planResponse.json();
+
+      // Crear suscripción con el plan
+      const subscriptionResponse = await fetch('https://api-m.paypal.com/v1/billing/subscriptions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${await this.getPayPalAccessToken()}`
+        },
+        body: JSON.stringify({
+          plan_id: plan.id,
+          custom_id: `tenant_${tenant_id}`,
+          application_context: {
+            brand_name: 'Skyplay',
+            locale: 'es-ES',
+            shipping_preference: 'NO_SHIPPING',
+            user_action: 'SUBSCRIBE_NOW',
+            payment_method: {
+              payer_selected: 'PAYPAL',
+              payee_preferred: 'IMMEDIATE_PAYMENT_REQUIRED'
+            },
+            return_url: `${process.env.FRONTEND_URL}/panel?payment=success&type=subscription&provider=paypal&subscription_type=${subscriptionType}`,
+            cancel_url: `${process.env.FRONTEND_URL}/panel?payment=cancel`
+          }
+        })
+      });
+
+      if (!subscriptionResponse.ok) {
+        const errorData = await subscriptionResponse.json();
+        console.error('PayPal subscription creation error:', errorData);
+        throw new HttpException('Error creating PayPal subscription', 500);
+      }
+
+      const subscription = await subscriptionResponse.json();
+      
+      // Obtener URL de aprobación
+      const approveLink = subscription.links.find((link: any) => link.rel === 'approve');
+      
+      if (!approveLink) {
+        throw new HttpException('No approval link found', 500);
+      }
+
+      // Guardar referencia de la suscripción pendiente
+      await this.pg.query(
+        `INSERT INTO billing_events (tenant_id, event_type, source, order_number, payload)
+         VALUES ($1, 'subscription_pending', 'PAYPAL', $2, $3)`,
+        [
+          tenant_id,
+          subscription.id,
+          JSON.stringify({
+            subscription_type: subscriptionType,
+            billing_cycle: billingCycle,
+            price,
+            paypal_plan_id: plan.id,
+            paypal_subscription_id: subscription.id,
+            status: 'pending'
+          })
+        ]
+      );
+
+      return res.json({
+        checkout_url: approveLink.href,
+        order_number: subscription.id
+      });
+    } catch (err: any) {
+      console.error('Error creating PayPal subscription checkout:', err);
+      throw new HttpException(err.message || 'Error al crear checkout PayPal', 500);
+    }
+  }
+
+  // Helper para obtener token de PayPal
+  private async getPayPalAccessToken(): Promise<string> {
+    const auth = Buffer.from(`${process.env.PAYPAL_CLIENT_ID}:${process.env.PAYPAL_CLIENT_SECRET}`).toString('base64');
+    
+    const response = await fetch('https://api-m.paypal.com/v1/oauth2/token', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Basic ${auth}`,
+        'Content-Type': 'application/x-www-form-urlencoded'
+      },
+      body: 'grant_type=client_credentials'
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to get PayPal access token');
+    }
+
+    const data = await response.json();
+    return data.access_token;
   }
 
   @Post('create-checkout')

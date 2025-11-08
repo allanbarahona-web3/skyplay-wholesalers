@@ -1118,6 +1118,242 @@ export class AuthController {
         break;
       }
 
+      // ========== SUSCRIPCIONES DE PAYPAL ==========
+      case 'BILLING.SUBSCRIPTION.ACTIVATED': {
+        const subscription = event.resource;
+        const subscriptionId = subscription.id;
+        const customId = subscription.custom_id; // tenant_{tenant_id}
+        
+        if (!customId || !customId.startsWith('tenant_')) {
+          console.error('❌ Invalid custom_id in PayPal subscription');
+          break;
+        }
+
+        const tenantId = parseInt(customId.replace('tenant_', ''));
+        
+        try {
+          // Obtener detalles de la suscripción pendiente
+          const eventResult = await this.pg.query(
+            `SELECT payload FROM billing_events 
+             WHERE order_number = $1 AND event_type = 'subscription_pending'
+             ORDER BY created_at DESC LIMIT 1`,
+            [subscriptionId]
+          );
+
+          if (eventResult.rows.length === 0) {
+            console.error(`❌ Subscription ${subscriptionId} not found in pending events`);
+            break;
+          }
+
+          const payload = eventResult.rows[0].payload;
+          const { subscription_type, billing_cycle, price } = payload;
+
+          // Calcular fecha de renovación
+          const now = new Date();
+          const endDate = new Date();
+          
+          if (billing_cycle === 'monthly') {
+            endDate.setMonth(endDate.getMonth() + 1);
+          } else if (billing_cycle === 'quarterly') {
+            endDate.setMonth(endDate.getMonth() + 3);
+          } else if (billing_cycle === 'semiannual') {
+            endDate.setMonth(endDate.getMonth() + 6);
+          }
+
+          // Crear billing event de activación
+          await this.pg.query(
+            `INSERT INTO billing_events (
+              tenant_id, event_type, source, order_number, 
+              amount, currency, status, payload, created_at
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+            [
+              tenantId,
+              'subscription_completed',
+              'PAYPAL',
+              `${subscriptionId}-activated`,
+              price,
+              'USD',
+              'completed',
+              JSON.stringify({
+                subscription_type,
+                billing_cycle,
+                paypal_subscription_id: subscriptionId,
+                renewal_date: endDate.toISOString()
+              }),
+              now.toISOString()
+            ]
+          );
+
+          // Crear o actualizar suscripción
+          await this.pg.query(
+            `INSERT INTO subscriptions (
+              tenant_id, stripe_subscription_id, status, 
+              current_period_end, product_type, billing_cycle
+            ) VALUES ($1, $2, $3, $4, $5, $6)
+            ON CONFLICT (tenant_id)
+            DO UPDATE SET
+              stripe_subscription_id = $2,
+              status = $3,
+              current_period_end = $4,
+              product_type = $5,
+              billing_cycle = $6`,
+            [
+              tenantId,
+              subscriptionId, // Usar subscriptionId de PayPal
+              'active',
+              endDate,
+              subscription_type === 'subscription-pref' ? 'preferential' : subscription_type,
+              billing_cycle
+            ]
+          );
+
+          // Enviar email de bienvenida
+          const userResult = await this.pg.query(
+            `SELECT u.email, t.name as tenant_name
+             FROM users u
+             INNER JOIN tenants t ON u.tenant_id = t.id
+             WHERE t.id = $1`,
+            [tenantId]
+          );
+
+          if (userResult.rows.length > 0 && userResult.rows[0].email) {
+            const billingCycleNames: { [key: string]: string } = {
+              monthly: 'Mensual',
+              quarterly: 'Trimestral (3 meses)',
+              semiannual: 'Semestral (6 meses)'
+            };
+
+            await this.emailService.sendSubscriptionWelcomeEmail({
+              to: userResult.rows[0].email,
+              tenantName: userResult.rows[0].tenant_name || 'Mayorista',
+              billingCycle: billingCycleNames[billing_cycle] || billing_cycle,
+              price: price,
+              renewalDate: endDate.toISOString()
+            });
+          }
+
+          console.log(`✅ PayPal subscription activated: ${subscriptionId} for tenant ${tenantId}`);
+        } catch (error) {
+          console.error('Error processing PayPal subscription activation:', error);
+        }
+        break;
+      }
+
+      case 'BILLING.SUBSCRIPTION.RENEWED':
+      case 'PAYMENT.SALE.COMPLETED': {
+        // Cuando PayPal cobra la renovación automática
+        const resource = event.resource;
+        const subscriptionId = resource.billing_agreement_id || resource.id;
+        
+        if (!subscriptionId) break;
+
+        try {
+          // Buscar la suscripción en DB
+          const subResult = await this.pg.query(
+            `SELECT tenant_id, billing_cycle, product_type 
+             FROM subscriptions 
+             WHERE stripe_subscription_id = $1`,
+            [subscriptionId]
+          );
+
+          if (subResult.rows.length === 0) {
+            console.log(`⚠️ Subscription ${subscriptionId} not found in DB`);
+            break;
+          }
+
+          const { tenant_id, billing_cycle, product_type } = subResult.rows[0];
+          const amount = parseFloat(resource.amount?.total || resource.amount || '0');
+
+          // Calcular nueva fecha de renovación
+          const newEndDate = new Date();
+          if (billing_cycle === 'monthly') {
+            newEndDate.setMonth(newEndDate.getMonth() + 1);
+          } else if (billing_cycle === 'quarterly') {
+            newEndDate.setMonth(newEndDate.getMonth() + 3);
+          } else if (billing_cycle === 'semiannual') {
+            newEndDate.setMonth(newEndDate.getMonth() + 6);
+          }
+
+          // Registrar billing event de renovación
+          await this.pg.query(
+            `INSERT INTO billing_events (
+              tenant_id, event_type, source, order_number,
+              amount, currency, status, payload, created_at
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())`,
+            [
+              tenant_id,
+              'subscription_renewed',
+              'PAYPAL',
+              `${subscriptionId}-${Date.now()}`,
+              amount,
+              'USD',
+              'completed',
+              JSON.stringify({
+                subscription_type: product_type,
+                billing_cycle,
+                paypal_subscription_id: subscriptionId,
+                renewal_date: newEndDate.toISOString()
+              })
+            ]
+          );
+
+          // Actualizar fecha de renovación en subscriptions
+          await this.pg.query(
+            `UPDATE subscriptions 
+             SET current_period_end = $1, status = 'active'
+             WHERE stripe_subscription_id = $2`,
+            [newEndDate, subscriptionId]
+          );
+
+          // Enviar email de renovación
+          const userResult = await this.pg.query(
+            `SELECT u.email, t.name as tenant_name
+             FROM users u
+             INNER JOIN tenants t ON u.tenant_id = t.id
+             WHERE t.id = $1`,
+            [tenant_id]
+          );
+
+          if (userResult.rows.length > 0 && userResult.rows[0].email) {
+            await this.emailService.sendRenewalEmail({
+              to: userResult.rows[0].email,
+              tenantName: userResult.rows[0].tenant_name || 'Mayorista',
+              productName: 'Suscripción Preferencial',
+              credentials: [],
+              expiresAt: newEndDate.toISOString(),
+              orderNumber: subscriptionId,
+              totalPrice: amount,
+              discountApplied: 0
+            });
+          }
+
+          console.log(`✅ PayPal subscription renewed: ${subscriptionId}`);
+        } catch (error) {
+          console.error('Error processing PayPal subscription renewal:', error);
+        }
+        break;
+      }
+
+      case 'BILLING.SUBSCRIPTION.CANCELLED': {
+        const subscription = event.resource;
+        const subscriptionId = subscription.id;
+        
+        try {
+          // Marcar como cancelada en DB
+          await this.pg.query(
+            `UPDATE subscriptions 
+             SET status = 'canceled'
+             WHERE stripe_subscription_id = $1`,
+            [subscriptionId]
+          );
+
+          console.log(`✅ PayPal subscription canceled: ${subscriptionId}`);
+        } catch (error) {
+          console.error('Error processing PayPal subscription cancellation:', error);
+        }
+        break;
+      }
+
       default:
         console.log(`ℹ️ Unhandled PayPal webhook event: ${eventType}`);
     }
