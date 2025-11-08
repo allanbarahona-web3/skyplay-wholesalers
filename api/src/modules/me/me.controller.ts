@@ -87,7 +87,10 @@ async overview(@Req() req: Request) {
       COALESCE(p.price::numeric, 0) AS price,
       COALESCE(
         (SELECT (payload->>'unit_price')::numeric FROM billing_events 
-         WHERE tenant_id=$1 AND payload->>'product_code' = s.product_code 
+         WHERE tenant_id=$1 AND (
+           (payload->>'service_id')::uuid = s.id 
+           OR payload->'service_ids' @> to_jsonb(s.id::text)
+         )
          ORDER BY received_at DESC LIMIT 1),
         0
       ) AS paid_price,
@@ -116,11 +119,24 @@ async overview(@Req() req: Request) {
   // No necesitamos calcular descuentos aquí - el paid_price YA tiene el descuento aplicado
   // Solo devolvemos los servicios como están
   const servicesWithPrices = services.rows.map((svc: any) => {
+    const catalogPrice = parseFloat(svc.price) || 0;
+    const paidPrice = parseFloat(svc.paid_price) || 0;
+    
     return {
-      ...svc,
-      price: parseFloat(svc.price) || 0, // Convertir price a número
-      paid_price: parseFloat(svc.paid_price) || 0, // Convertir paid_price a número
-      discounted_price: parseFloat(svc.paid_price) || 0 // El precio pagado es el precio con descuento
+      id: svc.id,
+      external_ref: svc.external_ref,
+      product_code: svc.product_code,
+      product_name: svc.product_name,
+      status: svc.status,
+      expires_at: svc.expires_at,
+      created_at: svc.created_at,
+      credential_email: svc.credential_email,
+      credential_password: svc.credential_password,
+      profile_name: svc.profile_name,
+      pin: svc.pin,
+      price: catalogPrice, // Precio del catálogo
+      paid_price: paidPrice, // Precio pagado (con descuento si aplica)
+      discounted_price: paidPrice // Alias para claridad en frontend
     };
   });
   
