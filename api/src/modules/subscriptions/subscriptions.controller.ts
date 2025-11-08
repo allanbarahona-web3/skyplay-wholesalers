@@ -3,13 +3,17 @@ import { Request, Response } from 'express';
 import { Pool } from 'pg';
 import Stripe from 'stripe';
 import { AuthGuard, JWTPayload } from '../../guards/auth.guard';
+import { EmailService } from '../email/email.service';
 
 @Controller('subscriptions')
 @UseGuards(AuthGuard) // Proteger TODOS los endpoints de subscriptions
 export class SubscriptionsController {
   private stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
 
-  constructor(@Inject('PG_POOL') private readonly pg: Pool) {}
+  constructor(
+    @Inject('PG_POOL') private readonly pg: Pool,
+    private readonly emailService: EmailService
+  ) {}
 
   @Post('checkout')
   async createCheckout(@Body() body: { plan: string }, @Req() req: Request, @Res() res: Response) {
@@ -330,6 +334,28 @@ export class SubscriptionsController {
             billingCycle
           ]
         );
+      }
+
+      // Obtener datos del usuario para enviar email
+      try {
+        const userQuery = `SELECT u.email, u.name FROM users u WHERE u.tenant_id = $1`;
+        const userResult = await this.pg.query(userQuery, [tenant_id]);
+        
+        if (userResult.rows.length > 0) {
+          const { email, name } = userResult.rows[0];
+          
+          // Enviar email de bienvenida de suscripción
+          await this.emailService.sendSubscriptionWelcomeEmail({
+            to: email,
+            tenantName: name || 'Mayorista',
+            billingCycle,
+            price,
+            renewalDate: endDate.toISOString()
+          });
+        }
+      } catch (emailErr) {
+        console.warn('⚠️ Error sending subscription email:', emailErr);
+        // No fallar el pago si falla el email
       }
 
       return res.json({

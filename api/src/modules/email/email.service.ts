@@ -400,6 +400,187 @@ export class EmailService {
   }
 
   /**
+   * Envía email de bienvenida cuando se activa una suscripción
+   */
+  async sendSubscriptionWelcomeEmail(params: {
+    to: string;
+    tenantName: string;
+    billingCycle: string;
+    price: number;
+    renewalDate: string;
+  }): Promise<boolean> {
+    const { to, tenantName, billingCycle, price, renewalDate } = params;
+
+    try {
+      const htmlContent = this.generateSubscriptionWelcomeTemplate(
+        tenantName,
+        billingCycle,
+        price,
+        renewalDate
+      );
+
+      const mailOptions = {
+        from: `"Skyplay Mayoristas" <${process.env.SMTP_USER}>`,
+        to,
+        subject: `✅ ¡Bienvenido a Suscripción Preferencial - 20% Descuento Activado!`,
+        html: htmlContent,
+      };
+
+      const info = await this.transporter.sendMail(mailOptions);
+      console.log('✅ Email de suscripción enviado:', info.messageId, 'to:', to);
+      return true;
+    } catch (error) {
+      console.error('❌ Error enviando email de suscripción:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Genera el HTML del email de bienvenida de suscripción
+   */
+  private generateSubscriptionWelcomeTemplate(
+    tenantName: string,
+    billingCycle: string,
+    price: number,
+    renewalDate: string
+  ): string {
+    const billingCycleText: { [key: string]: string } = {
+      'monthly': 'Mensual (1 mes)',
+      'quarterly': 'Trimestral (3 meses)',
+      'semiannual': 'Semestral (6 meses)',
+    };
+
+    const renewalDateFormatted = new Date(renewalDate).toLocaleDateString('es-ES', {
+      day: '2-digit',
+      month: 'long',
+      year: 'numeric',
+    });
+
+    const monthlyEquivalent = billingCycle === 'monthly' ? price : 
+                              billingCycle === 'quarterly' ? (price / 3) :
+                              (price / 6);
+
+    return `
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Suscripción Preferencial Activada - Skyplay</title>
+</head>
+<body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #f3f4f6;">
+  <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color: #f3f4f6; padding: 40px 20px;">
+    <tr>
+      <td align="center">
+        <!-- Container -->
+        <table width="600" cellpadding="0" cellspacing="0" border="0" style="background-color: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);">
+          
+          <!-- Header con gradiente verde -->
+          <tr>
+            <td style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); padding: 40px 30px; text-align: center;">
+              <!-- Logo Skyplay -->
+              <div style="margin: 0 auto 20px auto; text-align: center;">
+                <div style="color: #ffffff; font-size: 42px; font-weight: bold; line-height: 1; letter-spacing: -1px;">Skyplay</div>
+                <div style="color: #d1fae5; font-size: 16px; font-weight: 500; margin-top: 4px; letter-spacing: 2px;">MAYORISTAS</div>
+              </div>
+              <h1 style="margin: 20px 0 0 0; color: #ffffff; font-size: 28px; font-weight: bold;">🎉 ¡Suscripción Activada!</h1>
+              <p style="margin: 10px 0 0 0; color: #d1fae5; font-size: 16px;">20% descuento en todos tus productos</p>
+            </td>
+          </tr>
+
+          <!-- Welcome Message -->
+          <tr>
+            <td style="padding: 30px;">
+              <p style="margin: 0 0 20px 0; font-size: 16px; color: #374151;">
+                Hola <strong>${tenantName}</strong>,
+              </p>
+              <p style="margin: 0 0 20px 0; font-size: 14px; color: #6b7280; line-height: 1.6;">
+                ¡Felicidades! Tu suscripción preferencial ha sido activada correctamente. Ahora disfrutarás de <strong>20% descuento</strong> en todos los productos del catálogo.
+              </p>
+
+              <!-- Subscription Details -->
+              <div style="background-color: #ecfdf5; border-radius: 8px; padding: 20px; border-left: 4px solid #10b981; margin: 20px 0;">
+                <h3 style="margin: 0 0 15px 0; color: #065f46; font-size: 14px; font-weight: 600;">📋 Detalles de tu Suscripción</h3>
+                
+                <div style="margin-bottom: 12px;">
+                  <p style="margin: 0; font-size: 13px; color: #6b7280;">
+                    <strong style="color: #065f46;">Plan:</strong> ${billingCycleText[billingCycle] || 'Plan Premium'}
+                  </p>
+                </div>
+
+                <div style="margin-bottom: 12px;">
+                  <p style="margin: 0; font-size: 13px; color: #6b7280;">
+                    <strong style="color: #065f46;">Precio:</strong> $${price.toFixed(2)}
+                  </p>
+                </div>
+
+                <div style="margin-bottom: 12px;">
+                  <p style="margin: 0; font-size: 13px; color: #6b7280;">
+                    <strong style="color: #065f46;">Equivalente mensual:</strong> $${monthlyEquivalent.toFixed(2)}/mes
+                  </p>
+                </div>
+
+                <div style="border-top: 1px solid #a7f3d0; padding-top: 12px;">
+                  <p style="margin: 0; font-size: 13px; color: #6b7280;">
+                    <strong style="color: #065f46;">⏰ Próxima renovación:</strong> ${renewalDateFormatted}
+                  </p>
+                </div>
+              </div>
+
+              <!-- Benefits Section -->
+              <div style="margin: 25px 0;">
+                <h3 style="margin: 0 0 15px 0; color: #1f2937; font-size: 14px; font-weight: 600;">💚 Beneficios de tu Suscripción:</h3>
+                <ul style="margin: 0; padding-left: 20px; color: #6b7280; font-size: 13px; line-height: 1.8;">
+                  <li><strong style="color: #10b981;">20% descuento</strong> en TODOS los productos streaming</li>
+                  <li>Renovación automática cada ${billingCycleText[billingCycle].match(/\\d+/)?.[0] || '30'} días</li>
+                  <li>Acceso prioritario a nuevos servicios</li>
+                  <li>Soporte técnico preferente</li>
+                  <li>Cancelación flexible en cualquier momento</li>
+                </ul>
+              </div>
+
+              <!-- FAQ Section -->
+              <div style="background-color: #f3f4f6; border-radius: 8px; padding: 15px; margin: 20px 0;">
+                <h4 style="margin: 0 0 10px 0; color: #1f2937; font-size: 13px; font-weight: 600;">❓ Preguntas Frecuentes</h4>
+                
+                <p style="margin: 10px 0 5px 0; font-size: 12px; color: #374151;"><strong>¿Cómo cancelo mi suscripción?</strong></p>
+                <p style="margin: 0 0 10px 0; font-size: 12px; color: #6b7280;">Puedes cancelar en cualquier momento desde tu Panel Mayorista. La cancelación entrará en vigor al final del período actual.</p>
+
+                <p style="margin: 10px 0 5px 0; font-size: 12px; color: #374151;"><strong>¿Se renueva automáticamente?</strong></p>
+                <p style="margin: 0; font-size: 12px; color: #6b7280;">Sí, tu suscripción se renovará automáticamente cada ${billingCycleText[billingCycle].match(/\\d+/)?.[0] || '30'} días al mismo precio.</p>
+              </div>
+
+              <!-- CTA Button -->
+              <div style="text-align: center; margin: 25px 0;">
+                <a href="${process.env.FRONTEND_URL}/panel" style="display: inline-block; background-color: #10b981; color: #ffffff; padding: 12px 30px; border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 14px;">
+                  💚 Ir a mi Panel
+                </a>
+              </div>
+            </td>
+          </tr>
+
+          <!-- Footer -->
+          <tr>
+            <td style="padding: 30px; background-color: #f9fafb; border-top: 1px solid #e5e7eb; text-align: center;">
+              <p style="margin: 0 0 10px 0; font-size: 13px; color: #6b7280;">
+                © ${new Date().getFullYear()} Skyplay · Catálogo Mayorista
+              </p>
+              <p style="margin: 0; font-size: 12px; color: #9ca3af;">
+                Contáctanos por WhatsApp o desde tu Panel Mayorista si tienes preguntas.
+              </p>
+            </td>
+          </tr>
+
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
+    `;
+  }
+
+  /**
    * Test de conexión SMTP
    */
   async testConnection(): Promise<boolean> {
