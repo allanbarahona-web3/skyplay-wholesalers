@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { usePayment } from "@/components/PaymentContext";
 import CredentialsModal from "@/components/CredentialsModal";
 import SuccessInfoModal from "@/components/SuccessInfoModal";
-import { getAllProducts, logout } from "@/lib/api";
+import { getAllProducts, logout, getOverview } from "@/lib/api";
 import { groupProductsByService, createPriceMap, createProductCodeMap, getBrandColors, type CatalogService, type PriceMap, type ProductCodeMap } from "@/lib/catalog-utils";
 
 export default function Home() {
@@ -18,6 +18,7 @@ export default function Home() {
   const [showSuccessInfoModal, setShowSuccessInfoModal] = useState(false);
   const [successProvider, setSuccessProvider] = useState<string>('');
   const [purchasedServices, setPurchasedServices] = useState<any[]>([]);
+  const [subscription, setSubscription] = useState<any>(null); // Suscripción del usuario
   const router = useRouter();
   const { openPayment, walletBalance, refreshWallet } = usePayment();
 
@@ -56,6 +57,7 @@ export default function Home() {
     setLoading(true);
     try {
       const productsResult = await getAllProducts();
+      const overviewResult = await getOverview();
       
       if (productsResult.ok && productsResult.data) {
         const services = groupProductsByService(productsResult.data);
@@ -68,6 +70,12 @@ export default function Home() {
       } else {
         console.error('❌ Error cargando catálogo:', productsResult);
       }
+
+      // Cargar suscripción del usuario
+      if (overviewResult.ok && overviewResult.data?.subscription) {
+        setSubscription(overviewResult.data.subscription);
+        console.log('✅ Suscripción cargada:', overviewResult.data.subscription);
+      }
     } catch (error) {
       console.error('❌ Error cargando catálogo:', error);
     } finally {
@@ -79,6 +87,26 @@ export default function Home() {
     setExpandedRows(prev =>
       prev.includes(svc) ? [] : [svc]
     );
+  };
+
+  // Calcular precio con descuento si tiene suscripción activa
+  const calculatePrice = (basePrice: number) => {
+    if (!subscription || subscription.status !== 'active') {
+      return { price: basePrice, discount: 0, discounted: false };
+    }
+
+    // Verificar que la suscripción no haya expirado
+    if (subscription.current_period_end) {
+      const endDate = new Date(subscription.current_period_end);
+      if (endDate <= new Date()) {
+        return { price: basePrice, discount: 0, discounted: false };
+      }
+    }
+
+    // Aplicar 20% descuento
+    const discount = 0.20;
+    const discountedPrice = basePrice * (1 - discount);
+    return { price: discountedPrice, discount, discounted: true };
   };
 
   const handleBuy = (svc: string, plan: string) => {
@@ -231,8 +259,9 @@ export default function Home() {
                     <div className="plans">
                       {item.plans.map((plan) => {
                         const key = `${item.svc}|${plan}`;
-                        const price = priceMap[key];
+                        const basePrice = priceMap[key];
                         const stock = item.stockByPlan?.[plan] || 0;
+                        const priceInfo = calculatePrice(basePrice);
                         
                         let cleanPlan = plan;
                         if (plan.includes('Mes')) {
@@ -250,10 +279,26 @@ export default function Home() {
                             <p style={{ fontSize: '0.85rem', color: 'var(--muted)', marginBottom: '8px' }}>
                               Stock: {stock}
                             </p>
-                            {price && (
+                            {basePrice && (
                               <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '8px' }}>
-                                <div className="price" style={{ display: 'block', margin: 0, flex: 1 }}>
-                                  ${Number(price).toFixed(2)}
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1 }}>
+                                  {priceInfo.discounted ? (
+                                    <>
+                                      <div style={{ fontSize: '0.85rem', color: 'var(--muted)', textDecoration: 'line-through' }}>
+                                        ${basePrice.toFixed(2)}
+                                      </div>
+                                      <div style={{ fontWeight: 'bold', color: '#22c55e', fontSize: '1.1rem' }}>
+                                        ${priceInfo.price.toFixed(2)}
+                                      </div>
+                                      <div style={{ fontSize: '0.75rem', background: '#22c55e', color: '#000', padding: '2px 6px', borderRadius: '4px', fontWeight: 'bold' }}>
+                                        -20%
+                                      </div>
+                                    </>
+                                  ) : (
+                                    <div style={{ fontSize: '1.1rem', fontWeight: 'bold' }}>
+                                      ${basePrice.toFixed(2)}
+                                    </div>
+                                  )}
                                 </div>
                                 <button className="btn small" onClick={() => handleBuy(item.svc, plan)} style={{ background: 'var(--primary)', padding: '6px 14px', fontSize: '0.85rem' }}>
                                   Comprar
