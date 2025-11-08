@@ -3,9 +3,15 @@
 import React, { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { usePayment } from "@/components/PaymentContext";
-import { getOrderCredentials } from "@/lib/api";
-import { cancelSubscription } from "@/lib/api";
+import { 
+  getOrderCredentials, 
+  pauseSubscription,
+  resumeSubscription,
+  cancelSubscriptionAtPeriodEnd,
+  cancelSubscriptionImmediately
+} from "@/lib/api";
 import CredentialsModal from "@/components/CredentialsModal";
+import CancelSubscriptionModal from "@/components/CancelSubscriptionModal";
 
 // Tipos básicos
 type Service = {
@@ -41,6 +47,9 @@ type Subscription = {
   stripe_subscription_id?: string;
   product_type?: string;
   billing_cycle?: string;
+  remaining_days?: number;
+  cancel_at_period_end?: boolean;
+  paused_at?: string;
 };
 
 // Helpers
@@ -107,6 +116,7 @@ export default function PanelMayoristaPage() {
   const [search, setSearch] = useState<string>("");
   const [searchError, setSearchError] = useState<string>("");
   const [expandedAccordions, setExpandedAccordions] = useState<string[]>(["subscription"]);
+  const [showCancelModal, setShowCancelModal] = useState<boolean>(false);
   const [selectedPlan, setSelectedPlan] = useState<string | null>(null);
   const [selectedAmount, setSelectedAmount] = useState<number>(0);
   const [selectedCRMPlan, setSelectedCRMPlan] = useState<string | null>(null);
@@ -425,33 +435,81 @@ export default function PanelMayoristaPage() {
     };
   }, [expandedAccordions]);
 
-  const handleCancelSubscription = async () => {
-    if (!subscription.stripe_subscription_id) {
-      setToastMsg('No se encontró suscripción');
-      setToastOk(false);
-      return;
-    }
+  const handleCancelSubscription = () => {
+    setShowCancelModal(true);
+  };
 
-    if (!confirm('¿Estás seguro de que deseas cancelar tu suscripción? Perderás los descuentos preferenciales.')) {
-      return;
-    }
-
+  const handlePauseSubscription = async () => {
+    setShowCancelModal(false);
     try {
-      const result = await cancelSubscription(subscription.stripe_subscription_id);
+      const result = await pauseSubscription();
       if (result.ok) {
-        setToastMsg('✅ Suscripción cancelada exitosamente');
+        setToastMsg(`✅ ${result.data?.message || 'Suscripción pausada exitosamente'}`);
         setToastOk(true);
-        setSubscription({ status: 'inactive' });
-        // Recargar datos después de 2 segundos
-        setTimeout(() => {
-          loadOverviewData();
-        }, 2000);
+        setTimeout(() => loadOverviewData(), 2000);
       } else {
         setToastMsg(`❌ Error: ${result.error}`);
         setToastOk(false);
       }
     } catch (error) {
-      setToastMsg('❌ Error al cancelar suscripción');
+      setToastMsg('❌ Error al pausar suscripción');
+      setToastOk(false);
+    }
+  };
+
+  const handleCancelAtEnd = async () => {
+    setShowCancelModal(false);
+    try {
+      const result = await cancelSubscriptionAtPeriodEnd();
+      if (result.ok) {
+        setToastMsg(`✅ ${result.data?.message || 'Suscripción se cancelará al final del período'}`);
+        setToastOk(true);
+        setTimeout(() => loadOverviewData(), 2000);
+      } else {
+        setToastMsg(`❌ Error: ${result.error}`);
+        setToastOk(false);
+      }
+    } catch (error) {
+      setToastMsg('❌ Error al programar cancelación');
+      setToastOk(false);
+    }
+  };
+
+  const handleCancelNow = async () => {
+    if (!confirm('⚠️ ADVERTENCIA: Perderás acceso inmediato y el tiempo restante que pagaste. ¿Estás completamente seguro?')) {
+      return;
+    }
+    
+    setShowCancelModal(false);
+    try {
+      const result = await cancelSubscriptionImmediately();
+      if (result.ok) {
+        setToastMsg('✅ Suscripción cancelada inmediatamente');
+        setToastOk(true);
+        setTimeout(() => loadOverviewData(), 2000);
+      } else {
+        setToastMsg(`❌ Error: ${result.error}`);
+        setToastOk(false);
+      }
+    } catch (error) {
+      setToastMsg('❌ Error al cancelar inmediatamente');
+      setToastOk(false);
+    }
+  };
+
+  const handleResumeSubscription = async () => {
+    try {
+      const result = await resumeSubscription();
+      if (result.ok) {
+        setToastMsg(`✅ ${result.data?.message || 'Suscripción reactivada exitosamente'}`);
+        setToastOk(true);
+        setTimeout(() => loadOverviewData(), 2000);
+      } else {
+        setToastMsg(`❌ Error: ${result.error}`);
+        setToastOk(false);
+      }
+    } catch (error) {
+      setToastMsg('❌ Error al reactivar suscripción');
       setToastOk(false);
     }
   };
@@ -611,6 +669,36 @@ export default function PanelMayoristaPage() {
               </button>
               <p style={{ fontSize: '0.75rem', color: '#9ca3af', margin: '8px 0 0 0', textAlign: 'center' }}>
                 La cancelación entrará en vigor al final del período actual
+              </p>
+            </>
+          ) : subscription.status === "paused" ? (
+            <>
+              <div className="action-card-icon" style={{ backgroundColor: '#f59e0b' }}>⏸️</div>
+              <h3 className="action-card-title">Suscripción Pausada</h3>
+              
+              <div style={{
+                padding: '12px',
+                backgroundColor: '#fffbeb',
+                borderRadius: '6px',
+                marginBottom: '12px',
+                fontSize: '0.9rem',
+                color: '#92400e',
+                lineHeight: '1.5',
+                border: '1px solid #fcd34d'
+              }}>
+                <p style={{ margin: '0 0 8px 0', fontWeight: '600' }}>
+                  ⏸️ Tu suscripción está pausada
+                </p>
+                <p style={{ margin: 0 }}>
+                  Tienes {subscription.remaining_days || 0} días guardados que podrás usar cuando reactives.
+                </p>
+              </div>
+
+              <button className="btn-primary-full" onClick={handleResumeSubscription}>
+                ▶️ Reactivar Suscripción
+              </button>
+              <p style={{ fontSize: '0.75rem', color: '#9ca3af', margin: '8px 0 0 0', textAlign: 'center' }}>
+                Recupera tu descuento del 20% inmediatamente
               </p>
             </>
           ) : (
@@ -1135,6 +1223,21 @@ export default function PanelMayoristaPage() {
           }]}
         />
       )}
+
+      {/* Modal de opciones de cancelación */}
+      <CancelSubscriptionModal
+        isOpen={showCancelModal}
+        onClose={() => setShowCancelModal(false)}
+        onPause={handlePauseSubscription}
+        onCancelAtEnd={handleCancelAtEnd}
+        onCancelNow={handleCancelNow}
+        subscriptionEndDate={subscription.current_period_end}
+        remainingDays={
+          subscription.current_period_end 
+            ? Math.ceil((new Date(subscription.current_period_end).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24))
+            : undefined
+        }
+      />
 
         {/* Toast */}
         {toastMsg && (

@@ -189,6 +189,31 @@ export async function cancelSubscription(subscriptionId: string): Promise<ApiRes
   });
 }
 
+// Nuevas funciones para manejo de suscripciones
+export async function pauseSubscription(): Promise<ApiResponse<any>> {
+  return apiFetch('/subscriptions/pause', {
+    method: 'POST',
+  });
+}
+
+export async function resumeSubscription(): Promise<ApiResponse<any>> {
+  return apiFetch('/subscriptions/resume', {
+    method: 'POST',
+  });
+}
+
+export async function cancelSubscriptionAtPeriodEnd(): Promise<ApiResponse<any>> {
+  return apiFetch('/subscriptions/cancel-at-period-end', {
+    method: 'POST',
+  });
+}
+
+export async function cancelSubscriptionImmediately(): Promise<ApiResponse<any>> {
+  return apiFetch('/subscriptions/cancel-immediately', {
+    method: 'POST',
+  });
+}
+
 export async function createSubscriptionCheckout(data: {
   subscriptionType: string;
   billingCycle: string;

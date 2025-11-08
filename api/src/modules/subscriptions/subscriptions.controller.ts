@@ -519,41 +519,266 @@ export class SubscriptionsController {
     }
   }
 
-  @Post('cancel')
-  async cancelSubscription(@Body() body: { subscription_id: string }, @Req() req: Request, @Res() res: Response) {
+  // ========== OPCIONES DE CANCELACIÓN ==========
+
+  @Post('pause')
+  async pauseSubscription(@Req() req: Request, @Res() res: Response) {
     const { tenant_id } = (req as any).user as JWTPayload;
     if (!tenant_id) throw new HttpException('Unauthorized', 401);
 
-    const { subscription_id } = body;
-    if (!subscription_id) throw new HttpException('Subscription ID required', 400);
-
     try {
-      // Verificar que la suscripción pertenece al tenant
-      const checkQ = `SELECT id FROM subscriptions WHERE stripe_subscription_id = $1 AND tenant_id = $2`;
-      const { rows } = await this.pg.query(checkQ, [subscription_id, tenant_id]);
-      
-      if (rows.length === 0) {
-        throw new HttpException('Subscription not found or unauthorized', 404);
+      // Obtener suscripción actual
+      const subResult = await this.pg.query(
+        `SELECT stripe_subscription_id, current_period_end, status 
+         FROM subscriptions 
+         WHERE tenant_id = $1 AND status = 'active'`,
+        [tenant_id]
+      );
+
+      if (subResult.rows.length === 0) {
+        throw new HttpException('No active subscription found', 404);
       }
 
-      // Cancelar en Stripe (al final del período actual)
-      await this.stripe.subscriptions.update(subscription_id, {
-        cancel_at_period_end: true
-      });
+      const { stripe_subscription_id, current_period_end } = subResult.rows[0];
+
+      // Calcular días restantes
+      const now = new Date();
+      const endDate = new Date(current_period_end);
+      const remainingDays = Math.ceil((endDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+
+      // Pausar en Stripe/PayPal si es suscripción automática
+      if (stripe_subscription_id && stripe_subscription_id.startsWith('sub_')) {
+        // Es de Stripe - pausar
+        await this.stripe.subscriptions.update(stripe_subscription_id, {
+          pause_collection: { behavior: 'void' }
+        });
+      } else if (stripe_subscription_id && stripe_subscription_id.startsWith('I-')) {
+        // Es de PayPal - suspender
+        const accessToken = await this.getPayPalAccessToken();
+        await fetch(`https://api-m.paypal.com/v1/billing/subscriptions/${stripe_subscription_id}/suspend`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${accessToken}`
+          },
+          body: JSON.stringify({
+            reason: 'User requested pause'
+          })
+        });
+      }
 
       // Actualizar en DB
       await this.pg.query(
-        `UPDATE subscriptions SET status = 'canceled' WHERE stripe_subscription_id = $1`,
-        [subscription_id]
+        `UPDATE subscriptions 
+         SET status = 'paused', 
+             remaining_days = $1, 
+             paused_at = NOW(),
+             current_period_end = NULL
+         WHERE tenant_id = $2`,
+        [remainingDays, tenant_id]
       );
 
-      return res.json({ 
-        ok: true, 
-        message: 'Suscripción cancelada. Tendrás acceso hasta el final del período actual.' 
+      return res.json({
+        ok: true,
+        message: `Suscripción pausada. Tienes ${remainingDays} días guardados para cuando reactives.`,
+        remaining_days: remainingDays
       });
     } catch (err: any) {
-      console.error('Error canceling subscription:', err);
-      throw new HttpException(err.message || 'Error al cancelar suscripción', 500);
+      console.error('Error pausing subscription:', err);
+      throw new HttpException(err.message || 'Error al pausar suscripción', 500);
     }
+  }
+
+  @Post('resume')
+  async resumeSubscription(@Req() req: Request, @Res() res: Response) {
+    const { tenant_id } = (req as any).user as JWTPayload;
+    if (!tenant_id) throw new HttpException('Unauthorized', 401);
+
+    try {
+      // Obtener suscripción pausada
+      const subResult = await this.pg.query(
+        `SELECT stripe_subscription_id, remaining_days, status 
+         FROM subscriptions 
+         WHERE tenant_id = $1 AND status = 'paused'`,
+        [tenant_id]
+      );
+
+      if (subResult.rows.length === 0) {
+        throw new HttpException('No paused subscription found', 404);
+      }
+
+      const { stripe_subscription_id, remaining_days } = subResult.rows[0];
+
+      // Calcular nueva fecha de expiración
+      const newEndDate = new Date();
+      newEndDate.setDate(newEndDate.getDate() + (remaining_days || 0));
+
+      // Reactivar en Stripe/PayPal si es suscripción automática
+      if (stripe_subscription_id && stripe_subscription_id.startsWith('sub_')) {
+        // Es de Stripe - reactivar
+        await this.stripe.subscriptions.update(stripe_subscription_id, {
+          pause_collection: null as any
+        });
+      } else if (stripe_subscription_id && stripe_subscription_id.startsWith('I-')) {
+        // Es de PayPal - activar
+        const accessToken = await this.getPayPalAccessToken();
+        await fetch(`https://api-m.paypal.com/v1/billing/subscriptions/${stripe_subscription_id}/activate`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${accessToken}`
+          },
+          body: JSON.stringify({
+            reason: 'User resumed subscription'
+          })
+        });
+      }
+
+      // Actualizar en DB
+      await this.pg.query(
+        `UPDATE subscriptions 
+         SET status = 'active', 
+             current_period_end = $1,
+             remaining_days = NULL,
+             paused_at = NULL
+         WHERE tenant_id = $2`,
+        [newEndDate, tenant_id]
+      );
+
+      return res.json({
+        ok: true,
+        message: `Suscripción reactivada hasta ${newEndDate.toLocaleDateString('es-ES')}`,
+        new_end_date: newEndDate.toISOString()
+      });
+    } catch (err: any) {
+      console.error('Error resuming subscription:', err);
+      throw new HttpException(err.message || 'Error al reactivar suscripción', 500);
+    }
+  }
+
+  @Post('cancel-at-period-end')
+  async cancelAtPeriodEnd(@Req() req: Request, @Res() res: Response) {
+    const { tenant_id } = (req as any).user as JWTPayload;
+    if (!tenant_id) throw new HttpException('Unauthorized', 401);
+
+    try {
+      // Obtener suscripción actual
+      const subResult = await this.pg.query(
+        `SELECT stripe_subscription_id, current_period_end, status 
+         FROM subscriptions 
+         WHERE tenant_id = $1 AND status = 'active'`,
+        [tenant_id]
+      );
+
+      if (subResult.rows.length === 0) {
+        throw new HttpException('No active subscription found', 404);
+      }
+
+      const { stripe_subscription_id, current_period_end } = subResult.rows[0];
+
+      // Cancelar al final del período en Stripe/PayPal
+      if (stripe_subscription_id && stripe_subscription_id.startsWith('sub_')) {
+        // Es de Stripe
+        await this.stripe.subscriptions.update(stripe_subscription_id, {
+          cancel_at_period_end: true
+        });
+      } else if (stripe_subscription_id && stripe_subscription_id.startsWith('I-')) {
+        // Es de PayPal - cancelar
+        const accessToken = await this.getPayPalAccessToken();
+        await fetch(`https://api-m.paypal.com/v1/billing/subscriptions/${stripe_subscription_id}/cancel`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${accessToken}`
+          },
+          body: JSON.stringify({
+            reason: 'User requested cancellation at period end'
+          })
+        });
+      }
+
+      // Actualizar en DB
+      await this.pg.query(
+        `UPDATE subscriptions 
+         SET cancel_at_period_end = true
+         WHERE tenant_id = $1`,
+        [tenant_id]
+      );
+
+      return res.json({
+        ok: true,
+        message: `Tu suscripción se cancelará el ${new Date(current_period_end).toLocaleDateString('es-ES')}. Seguirás disfrutando los beneficios hasta esa fecha.`,
+        end_date: current_period_end
+      });
+    } catch (err: any) {
+      console.error('Error scheduling cancellation:', err);
+      throw new HttpException(err.message || 'Error al programar cancelación', 500);
+    }
+  }
+
+  @Post('cancel-immediately')
+  async cancelImmediately(@Req() req: Request, @Res() res: Response) {
+    const { tenant_id } = (req as any).user as JWTPayload;
+    if (!tenant_id) throw new HttpException('Unauthorized', 401);
+
+    try {
+      // Obtener suscripción actual
+      const subResult = await this.pg.query(
+        `SELECT stripe_subscription_id, status 
+         FROM subscriptions 
+         WHERE tenant_id = $1 AND (status = 'active' OR status = 'paused')`,
+        [tenant_id]
+      );
+
+      if (subResult.rows.length === 0) {
+        throw new HttpException('No subscription found', 404);
+      }
+
+      const { stripe_subscription_id } = subResult.rows[0];
+
+      // Cancelar inmediatamente en Stripe/PayPal
+      if (stripe_subscription_id && stripe_subscription_id.startsWith('sub_')) {
+        // Es de Stripe - cancelar ahora
+        await this.stripe.subscriptions.cancel(stripe_subscription_id);
+      } else if (stripe_subscription_id && stripe_subscription_id.startsWith('I-')) {
+        // Es de PayPal - cancelar
+        const accessToken = await this.getPayPalAccessToken();
+        await fetch(`https://api-m.paypal.com/v1/billing/subscriptions/${stripe_subscription_id}/cancel`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${accessToken}`
+          },
+          body: JSON.stringify({
+            reason: 'User requested immediate cancellation'
+          })
+        });
+      }
+
+      // Actualizar en DB - marcar como cancelada inmediatamente
+      await this.pg.query(
+        `UPDATE subscriptions 
+         SET status = 'canceled', 
+             current_period_end = NOW(),
+             cancel_at_period_end = false,
+             remaining_days = NULL
+         WHERE tenant_id = $1`,
+        [tenant_id]
+      );
+
+      return res.json({
+        ok: true,
+        message: 'Suscripción cancelada inmediatamente. Ya no tienes acceso a los beneficios.'
+      });
+    } catch (err: any) {
+      console.error('Error canceling immediately:', err);
+      throw new HttpException(err.message || 'Error al cancelar inmediatamente', 500);
+    }
+  }
+
+  @Post('cancel')
+  async cancelSubscription(@Body() body: { subscription_id: string }, @Req() req: Request, @Res() res: Response) {
+    // Mantener endpoint antiguo por compatibilidad - redirige a cancel-at-period-end
+    return this.cancelAtPeriodEnd(req, res);
   }
 }
