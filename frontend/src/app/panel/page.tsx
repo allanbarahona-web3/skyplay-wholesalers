@@ -946,7 +946,12 @@ export default function PanelMayoristaPage() {
                     <td className="td-date">{fmtDate(o.created_at || o.received_at)}</td>
                     <td className="td-price">{o.currency || "USD"} {o.total_amount ? parseFloat(o.total_amount.toString()).toFixed(2) : '0.00'}</td>
                     <td>
-                      <span className="badge badge-active">
+                      <span className={`badge ${
+                        o.status === 'completed' ? 'badge-active' : 
+                        o.status === 'pending' ? 'badge-soon' : 
+                        o.status === 'error' ? 'badge-expired' : 
+                        'badge-active'
+                      }`}>
                         {o.status === 'completed' ? 'Done' : o.status === 'pending' ? 'Pend' : o.status === 'error' ? 'Error' : o.status?.toUpperCase()}
                       </span>
                     </td>
