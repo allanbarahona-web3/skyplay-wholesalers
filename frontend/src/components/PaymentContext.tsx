@@ -2,7 +2,7 @@
 import React, { createContext, useContext, useState, ReactNode, useEffect } from 'react';
 import PaymentMethodModal from './PaymentMethodModal';
 import CredentialsModal from './CredentialsModal';
-import { getOverview, purchaseProduct, createProductCheckout, createSinpeProductCheckout, createPayPalProductCheckout, rechargeWallet, rechargeWalletPayPal, renewFromWallet, createRenewalCheckout, initiateRenewal, createSubscriptionCheckout, createSubscriptionPayPalCheckout, createSubscriptionSinpeCheckout } from '@/lib/api';
+import { getOverview, purchaseProduct, createProductCheckout, createSinpeProductCheckout, createPayPalProductCheckout, rechargeWallet, rechargeWalletPayPal, renewFromWallet, createRenewalCheckout, initiateRenewal, createSubscriptionCheckout, createSubscriptionPayPalCheckout, createSubscriptionSinpeCheckout, createSubscriptionWalletCheckout } from '@/lib/api';
 
 interface PaymentData {
   service: string;
@@ -292,10 +292,23 @@ export function PaymentProvider({ children }: { children: ReactNode }) {
       let result;
 
       if (method === 'WALLET') {
-        // Billetera: verificar balance
-        alert('⏳ Procesando con billetera...');
-        // TODO: Implementar compra de suscripción con billetera
-        return;
+        // Billetera: procesar de inmediato
+        const checkoutData = {
+          subscriptionType: data.subscriptionType,
+          billingCycle: data.billingCycle,
+          price: data.price
+        };
+        result = await createSubscriptionWalletCheckout(checkoutData);
+        
+        if (result.ok && result.data?.order_number) {
+          alert(`✅ ${result.data.message}`);
+          closePayment();
+          // Recargar datos después de 2 segundos
+          setTimeout(() => {
+            window.location.href = '/panel?payment=success&type=subscription&provider=wallet';
+          }, 1500);
+          return;
+        }
       } else if (method === 'CARD') {
         // Stripe
         const checkoutData = {

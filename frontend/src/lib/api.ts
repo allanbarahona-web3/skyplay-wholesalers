@@ -222,6 +222,17 @@ export async function createSubscriptionSinpeCheckout(data: {
   });
 }
 
+export async function createSubscriptionWalletCheckout(data: {
+  subscriptionType: string;
+  billingCycle: string;
+  price: number;
+}): Promise<ApiResponse<any>> {
+  return apiFetch('/subscriptions/wallet-checkout', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
 // ============================================================================
 // ADMIN ENDPOINTS
 // ============================================================================

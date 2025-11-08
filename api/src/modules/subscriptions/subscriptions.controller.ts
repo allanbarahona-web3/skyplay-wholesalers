@@ -204,6 +204,145 @@ export class SubscriptionsController {
     }
   }
 
+  @Post('wallet-checkout')
+  async createSubscriptionWalletCheckout(
+    @Body() body: { subscriptionType: string; billingCycle: string; price: number },
+    @Req() req: Request,
+    @Res() res: Response
+  ) {
+    const { tenant_id } = (req as any).user as JWTPayload;
+    if (!tenant_id) throw new HttpException('Unauthorized', 401);
+
+    const { subscriptionType, billingCycle, price } = body;
+    if (!subscriptionType || !billingCycle || price <= 0) {
+      throw new HttpException('Invalid subscription data', 400);
+    }
+
+    const orderNumber = `SUB-WALLET-${Date.now()}`;
+    
+    try {
+      // Obtener balance de la billetera del usuario
+      const walletQuery = `SELECT balance FROM wallets WHERE tenant_id = $1`;
+      const walletResult = await this.pg.query(walletQuery, [tenant_id]);
+      
+      if (walletResult.rows.length === 0) {
+        throw new HttpException('Wallet not found', 404);
+      }
+
+      const walletBalance = parseFloat(walletResult.rows[0].balance);
+
+      // Verificar si tiene suficiente saldo
+      if (walletBalance < price) {
+        throw new HttpException(
+          `Saldo insuficiente. Tienes $${walletBalance.toFixed(2)}, necesitas $${price.toFixed(2)}`,
+          402
+        );
+      }
+
+      // Descontar de la billetera
+      await this.pg.query(
+        `UPDATE wallets SET balance = balance - $1 WHERE tenant_id = $2`,
+        [price, tenant_id]
+      );
+
+      // Crear billing event para registrar la compra
+      const now = new Date();
+      const renewalDate = new Date();
+      
+      // Calcular fecha de renovación según el ciclo
+      if (billingCycle === 'monthly') {
+        renewalDate.setMonth(renewalDate.getMonth() + 1);
+      } else if (billingCycle === 'quarterly') {
+        renewalDate.setMonth(renewalDate.getMonth() + 3);
+      } else if (billingCycle === 'semiannual') {
+        renewalDate.setMonth(renewalDate.getMonth() + 6);
+      }
+
+      await this.pg.query(
+        `INSERT INTO billing_events (
+          tenant_id, event_type, source, order_number, 
+          amount, currency, status, payload, created_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+        [
+          tenant_id,
+          'subscription_completed',
+          'WALLET',
+          orderNumber,
+          price,
+          'USD',
+          'completed',
+          JSON.stringify({
+            subscription_type: subscriptionType,
+            billing_cycle: billingCycle,
+            unit_price: price,
+            original_amount: price,
+            discount_applied: 0,
+            renewal_date: renewalDate.toISOString()
+          }),
+          now.toISOString()
+        ]
+      );
+
+      // Crear o actualizar suscripción en la tabla subscriptions
+      const billingCycles: { [key: string]: number } = {
+        'monthly': 1,
+        'quarterly': 3,
+        'semiannual': 6
+      };
+
+      const months = billingCycles[billingCycle] || 1;
+      const startDate = now;
+      const endDate = new Date(now);
+      endDate.setMonth(endDate.getMonth() + months);
+
+      // Verificar si ya existe una suscripción activa
+      const existingSubQuery = `
+        SELECT id FROM subscriptions 
+        WHERE tenant_id = $1 AND status IN ('active', 'pending')
+        LIMIT 1
+      `;
+      const existingSubResult = await this.pg.query(existingSubQuery, [tenant_id]);
+
+      if (existingSubResult.rows.length > 0) {
+        // Actualizar suscripción existente
+        await this.pg.query(
+          `UPDATE subscriptions 
+           SET status = 'active', 
+               current_period_start = $2,
+               current_period_end = $3,
+               updated_at = NOW()
+           WHERE id = $1`,
+          [existingSubResult.rows[0].id, startDate.toISOString(), endDate.toISOString()]
+        );
+      } else {
+        // Crear nueva suscripción
+        await this.pg.query(
+          `INSERT INTO subscriptions (
+            tenant_id, status, current_period_start, current_period_end, 
+            subscription_type, billing_cycle, created_at, updated_at
+          ) VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW())`,
+          [
+            tenant_id,
+            'active',
+            startDate.toISOString(),
+            endDate.toISOString(),
+            subscriptionType,
+            billingCycle
+          ]
+        );
+      }
+
+      return res.json({
+        ok: true,
+        order_number: orderNumber,
+        message: `Suscripción activada hasta ${endDate.toLocaleDateString('es-ES')}`
+      });
+    } catch (err: any) {
+      console.error('Error creating wallet subscription checkout:', err);
+      throw new HttpException(err.message || 'Error al procesar pago con billetera', 500);
+    }
+  }
+
   @Post('cancel')
   async cancelSubscription(@Body() body: { subscription_id: string }, @Req() req: Request, @Res() res: Response) {
     const { tenant_id } = (req as any).user as JWTPayload;
