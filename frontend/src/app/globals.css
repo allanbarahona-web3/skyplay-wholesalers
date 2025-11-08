@@ -1687,11 +1687,13 @@ main.container {
 .badge {
   display: inline-flex;
   align-items: center;
-  padding: 4px 12px;
+  justify-content: center;
+  padding: 6px 16px;
   border-radius: 12px;
-  font-size: 0.813rem;
+  font-size: 0.875rem;
   font-weight: 500;
   letter-spacing: -0.01em;
+  white-space: nowrap;
 }
 
 .badge-active {
