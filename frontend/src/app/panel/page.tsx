@@ -39,6 +39,8 @@ type Subscription = {
   status: string;
   current_period_end?: string;
   stripe_subscription_id?: string;
+  product_type?: string;
+  billing_cycle?: string;
 };
 
 // Helpers
@@ -553,14 +555,63 @@ export default function PanelMayoristaPage() {
           {subscription.status === "active" ? (
             <>
               <div className="action-card-icon active">✓</div>
-              <h3 className="action-card-title">Suscripción Activa</h3>
-              <p className="action-card-desc">Precios preferenciales hasta:</p>
-              <p className="action-card-date">
-                {new Date(subscription.current_period_end || "").toLocaleDateString("es-ES", { day: "numeric", month: "long", year: "numeric" })}
-              </p>
+              <h3 className="action-card-title">Suscripción Preferencial Activa</h3>
+              
+              {/* Subscription details grid */}
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: '1fr 1fr',
+                gap: '12px',
+                margin: '16px 0',
+                padding: '12px',
+                backgroundColor: '#f0fdf4',
+                borderRadius: '8px',
+                border: '1px solid #86efac'
+              }}>
+                <div>
+                  <p style={{ margin: 0, fontSize: '0.85rem', color: '#6b7280' }}>Plan activo</p>
+                  <p style={{ margin: '4px 0 0 0', fontSize: '1rem', fontWeight: '600', color: '#10b981' }}>
+                    {subscription.billing_cycle === 'monthly' ? 'Mensual' :
+                     subscription.billing_cycle === 'quarterly' ? '3 Meses' :
+                     subscription.billing_cycle === 'semiannual' ? 'Semestral' : 'Activo'}
+                  </p>
+                </div>
+                <div>
+                  <p style={{ margin: 0, fontSize: '0.85rem', color: '#6b7280' }}>Descuento</p>
+                  <p style={{ margin: '4px 0 0 0', fontSize: '1rem', fontWeight: '600', color: '#10b981' }}>20% Off</p>
+                </div>
+                <div style={{ gridColumn: '1 / -1' }}>
+                  <p style={{ margin: 0, fontSize: '0.85rem', color: '#6b7280' }}>Próxima renovación</p>
+                  <p style={{ margin: '4px 0 0 0', fontSize: '1rem', fontWeight: '600', color: '#10b981' }}>
+                    📅 {new Date(subscription.current_period_end || "").toLocaleDateString("es-ES", { day: "numeric", month: "long", year: "numeric" })}
+                  </p>
+                </div>
+              </div>
+
+              {/* Info section */}
+              <div style={{
+                padding: '12px',
+                backgroundColor: '#f3f4f6',
+                borderRadius: '6px',
+                marginBottom: '12px',
+                fontSize: '0.85rem',
+                color: '#6b7280',
+                lineHeight: '1.5'
+              }}>
+                <p style={{ margin: 0 }}>
+                  ✅ Disfrutas <strong>20% descuento</strong> en todos los productos del catálogo
+                </p>
+                <p style={{ margin: '6px 0 0 0' }}>
+                  🔄 Se renueva automáticamente cada ciclo
+                </p>
+              </div>
+
               <button className="btn-secondary-full" onClick={handleCancelSubscription}>
-                Cancelar Suscripción
+                ❌ Cancelar Suscripción
               </button>
+              <p style={{ fontSize: '0.75rem', color: '#9ca3af', margin: '8px 0 0 0', textAlign: 'center' }}>
+                La cancelación entrará en vigor al final del período actual
+              </p>
             </>
           ) : (
             <>
