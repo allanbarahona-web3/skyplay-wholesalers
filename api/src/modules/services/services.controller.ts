@@ -939,8 +939,9 @@ async renewFromWallet(@Param('id') serviceId: string, @Req() req: Request, @Res(
         service_id: serviceId,
         product_code: service.product_code,
         amount: finalPrice,
+        unit_price: finalPrice,
         original_amount: originalPrice,
-        discount_applied: discount,
+        discount_applied: discount > 0 ? discount / originalPrice : 0,
         currency: 'USD',
         status: 'completed'
       })]
