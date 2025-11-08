@@ -829,11 +829,15 @@ async renew(@Param('id') serviceId: string, @Req() req: Request, @Res() res: Res
 private async createOrder(tenantId: number, service: any, finalPrice: number) {
   const q = `INSERT INTO billing_events (tenant_id, event_type, source, payload)
              VALUES ($1, 'renewal_pending', 'MANUAL', $2) RETURNING id`;
+  const originalPrice = parseFloat(service.price);
+  const discountApplied = originalPrice - finalPrice;
   const payload = {
     service_id: service.id,
     product_code: service.product_code,
     amount: finalPrice,
-    original_amount: parseFloat(service.price),
+    unit_price: finalPrice,
+    original_amount: originalPrice,
+    discount_applied: discountApplied > 0 ? discountApplied / originalPrice : 0,
     currency: 'USD',
     status: 'pending'
   };
