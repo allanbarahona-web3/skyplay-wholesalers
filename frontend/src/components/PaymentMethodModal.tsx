@@ -31,6 +31,13 @@ export default function PaymentMethodModal({
   const [rechargeMethod, setRechargeMethod] = useState<string | null>(null);
   const [rechargeAmount, setRechargeAmount] = useState<string>('');
 
+  // Debug y convertir a números por si acaso
+  const numPrice = typeof price === 'string' ? parseFloat(price) : price;
+  const numOriginalPrice = originalPrice ? (typeof originalPrice === 'string' ? parseFloat(originalPrice) : originalPrice) : undefined;
+  const numDiscount = typeof discount === 'string' ? parseFloat(discount) : discount;
+  
+  console.log('🎯 PaymentMethodModal received:', { price: numPrice, originalPrice: numOriginalPrice, discount: numDiscount });
+
   if (!isOpen) return null;
 
   const handlePayment = () => {
@@ -147,21 +154,21 @@ export default function PaymentMethodModal({
             </div>
             <div className="modal-footer">
               <div className="price-display">
-                {discount && discount > 0 && originalPrice && typeof originalPrice === 'number' ? (
+                {numDiscount && numDiscount > 0 && numOriginalPrice && typeof numOriginalPrice === 'number' ? (
                   <div>
                     <div style={{ marginBottom: '8px' }}>
                       <span className="price-label">Precio original:</span>
-                      <span style={{ marginLeft: '8px', textDecoration: 'line-through', color: '#ef4444', fontWeight: 'bold' }}>${originalPrice.toFixed(2)}</span>
+                      <span style={{ marginLeft: '8px', textDecoration: 'line-through', color: '#ef4444', fontWeight: 'bold' }}>${numOriginalPrice.toFixed(2)}</span>
                     </div>
                     <div>
-                      <span className="price-label">Total con descuento ({Math.round(discount * 100)}%):</span>
-                      <span className="price-amount" style={{ color: '#10b981', marginLeft: '8px' }}>${price.toFixed(2)}</span>
+                      <span className="price-label">Total con descuento ({Math.round(numDiscount * 100)}%):</span>
+                      <span className="price-amount" style={{ color: '#10b981', marginLeft: '8px' }}>${numPrice.toFixed(2)}</span>
                     </div>
                   </div>
                 ) : (
                   <div>
                     <span className="price-label">Total</span>
-                    <span className="price-amount">${price.toFixed(2)}</span>
+                    <span className="price-amount">${numPrice.toFixed(2)}</span>
                   </div>
                 )}
               </div>

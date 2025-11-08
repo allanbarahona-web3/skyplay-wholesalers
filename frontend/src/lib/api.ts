@@ -164,6 +164,12 @@ export async function getMyServices(): Promise<ApiResponse<any[]>> {
   });
 }
 
+export async function getProductPrice(productCode: string): Promise<ApiResponse<{ code: string; name: string; price: number }>> {
+  return apiFetch(`/me/products/${productCode}/price`, {
+    method: 'GET',
+  });
+}
+
 export async function getOrderCredentials(orderNumber: string): Promise<ApiResponse<any>> {
   return apiFetch(`/me/orders/${orderNumber}/credentials`, {
     method: 'GET',

@@ -330,16 +330,14 @@ export default function PanelMayoristaPage() {
   const handleRenew = async (service: Service) => {
     // Obtener el precio REAL del catálogo para este producto
     try {
-      const response = await fetch(`http://localhost:3000/api/me/products/${service.product_code}/price`, {
-        credentials: 'include'
-      });
+      const { getProductPrice } = await import('@/lib/api');
+      const response = await getProductPrice(service.product_code);
       
-      if (!response.ok) {
+      if (!response.ok || !response.data) {
         throw new Error('Error al obtener precio');
       }
       
-      const productData = await response.json();
-      const catalogPrice = parseFloat(productData.price) || 0;
+      const catalogPrice = parseFloat(response.data.price.toString()) || 0;
       
       // Verificar si tiene suscripción activa para aplicar descuento
       let finalPrice = catalogPrice;
@@ -353,6 +351,8 @@ export default function PanelMayoristaPage() {
           finalPrice = catalogPrice * (1 - discountApplied);
         }
       }
+      
+      console.log('📤 handleRenew sending to openPayment:', { catalogPrice, finalPrice, discountApplied });
       
       openPayment({
         service: service.product_name,

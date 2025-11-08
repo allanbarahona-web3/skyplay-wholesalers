@@ -41,6 +41,18 @@ export function PaymentProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const openPayment = (data: PaymentData) => {
+    // Si ya viene originalPrice y discount precalculado (ej: renovaciones), usarlos
+    if (data.originalPrice !== undefined && data.discount !== undefined) {
+      setPaymentData({
+        ...data,
+        originalPrice: data.originalPrice,
+        price: data.price,
+        discount: data.discount
+      });
+      setIsOpen(true);
+      return;
+    }
+    
     // Calcular descuento si el usuario tiene suscripción activa
     let finalPrice = data.price;
     let discountApplied = 0;

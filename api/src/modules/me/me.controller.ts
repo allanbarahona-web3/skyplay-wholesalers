@@ -18,7 +18,11 @@ async getProductPrice(@Param('code') code: string) {
     throw new HttpException('Producto no encontrado', 404);
   }
   
-  return rows[0];
+  return {
+    code: rows[0].code,
+    name: rows[0].name,
+    price: parseFloat(rows[0].price) || 0
+  };
 }
 
   @Get('overview')
