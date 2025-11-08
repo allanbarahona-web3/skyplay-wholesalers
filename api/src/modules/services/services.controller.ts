@@ -1016,8 +1016,8 @@ async renewFromWallet(@Param('id') serviceId: string, @Req() req: Request, @Res(
   }
 }
 
- @Post(':id/checkout')
-  @UseGuards(AuthGuard) // Proteger este endpoint
+@Post(':id/checkout')
+@UseGuards(AuthGuard) // Proteger este endpoint
 async createCheckout(
   @Param('id') serviceId: string, 
   @Req() req: Request, 
@@ -1135,6 +1135,94 @@ async createCheckout(
     });
   }
 }
+
+  @Post(':id/checkout/sinpe')
+  @UseGuards(AuthGuard)
+  async createSinpeRenewalCheckout(
+    @Param('id') serviceId: string,
+    @Req() req: Request,
+    @Res() res: Response
+  ) {
+    const { tenant_id } = (req as any).user as JWTPayload;
+    if (!tenant_id) throw new HttpException('Unauthorized', 401);
+
+    try {
+      // 1. Obtener servicio
+      const serviceResult = await this.pg.query(
+        `SELECT s.id, s.product_code, s.tenant_id, p.price, p.name as product_name
+         FROM services s
+         JOIN products p ON s.product_code = p.code
+         WHERE s.id = $1 AND s.tenant_id = $2`,
+        [serviceId, tenant_id]
+      );
+
+      if (serviceResult.rows.length === 0) {
+        throw new HttpException('Service not found', 404);
+      }
+
+      const service = serviceResult.rows[0];
+
+      // 2. Verificar suscripción para descuento
+      const subResult = await this.pg.query(
+        `SELECT status FROM subscriptions 
+         WHERE tenant_id = $1 AND current_period_end > NOW()
+         ORDER BY current_period_end DESC LIMIT 1`,
+        [tenant_id]
+      );
+
+      const hasActiveSubscription = subResult.rows.length > 0;
+      const discount = hasActiveSubscription ? 0.20 : 0;
+      const originalPrice = parseFloat(service.price);
+      const finalPrice = originalPrice * (1 - discount);
+
+      // 3. Generar order number
+      const orderNumber = this.generateOrderNumber();
+
+      // 4. Crear orden SINPE para renovación
+      const eventResult = await this.pg.query(
+        `INSERT INTO billing_events (tenant_id, event_type, source, order_number, payload)
+         VALUES ($1, 'renewal_pending', 'SINPE', $2, $3)
+         RETURNING id`,
+        [
+          tenant_id,
+          orderNumber,
+          JSON.stringify({
+            service_id: serviceId,
+            product_code: service.product_code,
+            product_name: service.product_name,
+            amount: finalPrice,
+            unit_price: finalPrice,
+            original_amount: originalPrice,
+            discount_applied: discount > 0 ? discount : 0,
+            currency: 'USD',
+            status: 'pending'
+          })
+        ]
+      );
+
+      const orderId = eventResult.rows[0].id;
+
+      // 5. Devolver instrucciones SINPE
+      return res.json({
+        order_id: orderId,
+        order_number: orderNumber,
+        method: 'SINPE',
+        amount: finalPrice,
+        instructions: {
+          phone: process.env.SINPE_PHONE || '8888-8888',
+          accountName: process.env.SINPE_ACCOUNT_NAME || 'Skyplay Costa Rica',
+          reference: orderNumber
+        },
+        service: {
+          name: service.product_name,
+          code: service.product_code
+        }
+      });
+    } catch (err: any) {
+      console.error('Error creating SINPE renewal checkout:', err);
+      throw err;
+    }
+  }
 
   private generateOrderNumber(): string {
     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
