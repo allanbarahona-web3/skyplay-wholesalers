@@ -1647,22 +1647,27 @@ main.container {
 .td-number {
   font-weight: 600;
   color: var(--text-secondary);
-  width: 50px;
+  width: 40px;
+  text-align: center;
 }
 
 .td-product {
   font-weight: 500;
+  min-width: 140px;
 }
 
 .td-date {
   font-size: 0.875rem;
   color: var(--text-secondary);
   white-space: nowrap;
+  width: 130px;
 }
 
 .td-price {
   font-weight: 600;
   font-variant-numeric: tabular-nums;
+  width: 100px;
+  text-align: right;
 }
 
 .td-price.discount {
