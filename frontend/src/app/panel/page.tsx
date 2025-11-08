@@ -947,7 +947,7 @@ export default function PanelMayoristaPage() {
                     <td className="td-price">{o.currency || "USD"} {o.total_amount ? parseFloat(o.total_amount.toString()).toFixed(2) : '0.00'}</td>
                     <td>
                       <span className="badge badge-active">
-                        {o.status === 'completed' ? 'Pagado' : o.status === 'pending' ? 'Pendiente' : o.status?.toUpperCase()}
+                        {o.status === 'completed' ? 'Done' : o.status === 'pending' ? 'Pend' : o.status === 'error' ? 'Error' : o.status?.toUpperCase()}
                       </span>
                     </td>
                     <td className="td-muted">{o.product_name || 'Catálogo'}</td>
