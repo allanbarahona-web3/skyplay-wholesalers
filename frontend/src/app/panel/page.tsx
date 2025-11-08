@@ -261,20 +261,27 @@ export default function PanelMayoristaPage() {
       // Cargar servicios activos
       if (data.active_services) {
         console.log('🔍 Frontend received active_services:', data.active_services.slice(0, 1));
-        const mappedServices = data.active_services.map((s: any) => ({
-          id: s.id,
-          product_name: s.product_name || s.product_code,
-          product_code: s.product_code,
-          status: s.status,
-          expires_at: s.expires_at,
-          created_at: s.created_at,
-          credential_email: s.credential_email,
-          credential_password: s.credential_password,
-          profile_name: s.profile_name,
-          pin: s.pin,
-          price: parseFloat(s.price) || 0,
-          discounted_price: parseFloat(s.discounted_price) || 0
-        }));
+        const mappedServices = data.active_services.map((s: any) => {
+          const price = typeof s.price === 'string' ? parseFloat(s.price) : (typeof s.price === 'number' ? s.price : 0);
+          const discounted_price = typeof s.discounted_price === 'string' ? parseFloat(s.discounted_price) : (typeof s.discounted_price === 'number' ? s.discounted_price : 0);
+          console.log(`📦 Service ${s.product_name}: 
+            Raw price: "${s.price}" (type: ${typeof s.price}) → Parsed: ${price}
+            Raw discounted: "${s.discounted_price}" (type: ${typeof s.discounted_price}) → Parsed: ${discounted_price}`);
+          return {
+            id: s.id,
+            product_name: s.product_name || s.product_code,
+            product_code: s.product_code,
+            status: s.status,
+            expires_at: s.expires_at,
+            created_at: s.created_at,
+            credential_email: s.credential_email,
+            credential_password: s.credential_password,
+            profile_name: s.profile_name,
+            pin: s.pin,
+            price: price,
+            discounted_price: discounted_price
+          };
+        });
         console.log('🔍 Mapped services (first):', mappedServices.slice(0, 1));
         setServices(mappedServices);
       }

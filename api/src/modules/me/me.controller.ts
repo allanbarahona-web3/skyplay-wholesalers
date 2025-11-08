@@ -114,15 +114,17 @@ async overview(@Req() req: Request) {
   const servicesWithPrices = services.rows.map((svc: any) => {
     return {
       ...svc,
-      discounted_price: svc.paid_price // El precio pagado es el precio con descuento
+      price: parseFloat(svc.price) || 0, // Convertir price a número
+      paid_price: parseFloat(svc.paid_price) || 0, // Convertir paid_price a número
+      discounted_price: parseFloat(svc.paid_price) || 0 // El precio pagado es el precio con descuento
     };
   });
   
   // DEBUG: Ver qué se está devolviendo al frontend
-  console.log('📤 Sending to frontend (first service):');
-  if (servicesWithPrices.length > 0) {
-    console.log(`  price: ${servicesWithPrices[0].price}, discounted_price: ${servicesWithPrices[0].discounted_price}`);
-  }
+  console.log('📤 Sending to frontend - Services count:', servicesWithPrices.length);
+  servicesWithPrices.slice(0, 3).forEach((svc: any, i: number) => {
+    console.log(`  [${i}] ${svc.product_name}: price=${svc.price} (type: ${typeof svc.price}), discounted=${svc.discounted_price} (type: ${typeof svc.discounted_price})`);
+  });
 
  const ordQ = `
   SELECT 
