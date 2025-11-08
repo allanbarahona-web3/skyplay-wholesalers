@@ -521,15 +521,74 @@ export class AuthController {
   break;
 }
 
+    case 'customer.subscription.created': {
+      const subscription = event.data.object as Stripe.Subscription;
+      const metadata = subscription.metadata || {};
+      const subscriptionType = metadata.subscription_type || 'preferential'; // Map to ENUM: preferential, crm-pro, tienda
+      const billingCycle = metadata.billing_cycle || 'monthly'; // ENUM: monthly, quarterly, semiannual
+      const tenantId = metadata.tenant_id ? parseInt(metadata.tenant_id) : null;
+
+      if (!tenantId) {
+        console.warn(`⚠️ customer.subscription.created: No tenant_id in metadata for subscription ${subscription.id}`);
+        break;
+      }
+
+      try {
+        const periodEnd = (subscription as any).current_period_end;
+        const periodEndDate = periodEnd ? new Date(periodEnd * 1000) : null;
+
+        // Map subscription-pref to 'preferential' enum
+        const productTypeEnum = subscriptionType === 'subscription-pref' ? 'preferential' : subscriptionType;
+
+        await this.pg.query(
+          `INSERT INTO subscriptions (tenant_id, stripe_subscription_id, status, current_period_end, product_type, billing_cycle)
+           VALUES ($1, $2, $3, $4, $5, $6)
+           ON CONFLICT (tenant_id) 
+           DO UPDATE SET 
+             stripe_subscription_id = $2,
+             status = $3,
+             current_period_end = CASE WHEN $4 IS NOT NULL THEN $4 ELSE subscriptions.current_period_end END,
+             product_type = $5,
+             billing_cycle = $6`,
+          [
+            tenantId,
+            subscription.id,
+            subscription.status,
+            periodEndDate,
+            productTypeEnum,
+            billingCycle
+          ]
+        );
+        console.log(`✅ Subscription ${subscription.id} CREATED for tenant ${tenantId}, type: ${productTypeEnum}, cycle: ${billingCycle}, expires: ${periodEndDate ? periodEndDate.toISOString() : 'undefined'}`);
+      } catch (err: any) {
+        console.error('Error creating subscription:', err && err.message ? err.message : err);
+      }
+      break;
+    }
+
     case 'customer.subscription.updated': {
-  const subscription = event.data.object as Stripe.Subscription;
-  await this.pg.query(
-    `UPDATE subscriptions SET status = $1, current_period_end = $2 
-     WHERE stripe_subscription_id = $3`,
-    [subscription.status, new Date((subscription as any).current_period_end * 1000), subscription.id]
-  );
-  break;
-}
+      const subscription = event.data.object as Stripe.Subscription;
+      const metadata = subscription.metadata || {};
+      const subscriptionType = metadata.subscription_type || 'preferential';
+      const billingCycle = metadata.billing_cycle || 'monthly';
+      
+      // Map subscription-pref to 'preferential' enum
+      const productTypeEnum = subscriptionType === 'subscription-pref' ? 'preferential' : subscriptionType;
+
+      await this.pg.query(
+        `UPDATE subscriptions SET status = $1, current_period_end = $2, product_type = $3, billing_cycle = $4
+         WHERE stripe_subscription_id = $5`,
+        [
+          subscription.status,
+          new Date((subscription as any).current_period_end * 1000),
+          productTypeEnum,
+          billingCycle,
+          subscription.id
+        ]
+      );
+      console.log(`✅ Subscription ${subscription.id} UPDATED, status: ${subscription.status}, type: ${productTypeEnum}`);
+      break;
+    }
 
       case 'customer.subscription.deleted': {
         const subscription = event.data.object as Stripe.Subscription;
@@ -538,6 +597,7 @@ export class AuthController {
            WHERE stripe_subscription_id = $1`,
           [subscription.id]
         );
+        console.log(`✅ Subscription ${subscription.id} DELETED/CANCELED`);
         break;
       }
     }

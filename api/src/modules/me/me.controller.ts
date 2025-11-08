@@ -73,13 +73,20 @@ async overview(@Req() req: Request) {
   };
   const wallet_balance = parseFloat(ten.rows[0]?.wallet_balance || '0');
 
-  // Services activos CON credenciales
+  // Services activos CON credenciales Y precios reales de órdenes
   const srvQ = `
     SELECT 
       s.id, 
       s.external_ref, 
       s.product_code,
       COALESCE(p.name, s.product_code) AS product_name,
+      COALESCE(p.price::numeric, 0) AS price,
+      COALESCE(
+        (SELECT (payload->>'unit_price')::numeric FROM billing_events 
+         WHERE tenant_id=$1 AND payload->>'product_code' = s.product_code 
+         ORDER BY received_at DESC LIMIT 1),
+        0
+      ) AS paid_price,
       s.status, 
       s.expires_at,
       s.created_at,
@@ -95,6 +102,27 @@ async overview(@Req() req: Request) {
     LIMIT 200
   `;
   const services = await this.pg.query(srvQ, [tenant_id]);
+  
+  // DEBUG: Ver qué precios está devolviendo la query
+  console.log('🔍 Services query result (first 2):');
+  services.rows.slice(0, 2).forEach(s => {
+    console.log(`  Product: ${s.product_code}, Catalog Price: ${s.price}, Paid Price: ${s.paid_price}`);
+  });
+
+  // No necesitamos calcular descuentos aquí - el paid_price YA tiene el descuento aplicado
+  // Solo devolvemos los servicios como están
+  const servicesWithPrices = services.rows.map((svc: any) => {
+    return {
+      ...svc,
+      discounted_price: svc.paid_price // El precio pagado es el precio con descuento
+    };
+  });
+  
+  // DEBUG: Ver qué se está devolviendo al frontend
+  console.log('📤 Sending to frontend (first service):');
+  if (servicesWithPrices.length > 0) {
+    console.log(`  price: ${servicesWithPrices[0].price}, discounted_price: ${servicesWithPrices[0].discounted_price}`);
+  }
 
  const ordQ = `
   SELECT 
@@ -126,7 +154,6 @@ async overview(@Req() req: Request) {
   LIMIT 10
 `;
 const orders = await this.pg.query(ordQ, [tenant_id]);
-  
 
   return {
     user: {
@@ -141,7 +168,7 @@ const orders = await this.pg.query(ordQ, [tenant_id]);
     wholesaler,
     subscription,
     wallet_balance,
-    active_services: services.rows,
+    active_services: servicesWithPrices,
     last_orders: orders.rows,
   };
 }

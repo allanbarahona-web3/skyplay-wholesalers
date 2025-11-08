@@ -2,7 +2,7 @@
 import React, { createContext, useContext, useState, ReactNode, useEffect } from 'react';
 import PaymentMethodModal from './PaymentMethodModal';
 import CredentialsModal from './CredentialsModal';
-import { getOverview, purchaseProduct, createProductCheckout, createSinpeProductCheckout, createPayPalProductCheckout, rechargeWallet, rechargeWalletPayPal, renewFromWallet, createRenewalCheckout, initiateRenewal } from '@/lib/api';
+import { getOverview, purchaseProduct, createProductCheckout, createSinpeProductCheckout, createPayPalProductCheckout, rechargeWallet, rechargeWalletPayPal, renewFromWallet, createRenewalCheckout, initiateRenewal, createSubscriptionCheckout, createSubscriptionPayPalCheckout, createSubscriptionSinpeCheckout } from '@/lib/api';
 
 interface PaymentData {
   service: string;
@@ -11,6 +11,11 @@ interface PaymentData {
   productCode: string;
   isRenewal?: boolean; // Para identificar renovaciones
   serviceId?: string; // ID del servicio a renovar
+  isSubscription?: boolean; // Para identificar suscripciones
+  subscriptionType?: string; // 'subscription-pref', 'crm-basic', 'crm-pro', 'tienda'
+  billingCycle?: string; // 'monthly', 'quarterly', 'semiannual'
+  originalPrice?: number; // Precio sin descuento
+  discount?: number; // Descuento aplicado
 }
 
 interface PaymentContextType {
@@ -29,13 +34,33 @@ export function PaymentProvider({ children }: { children: ReactNode }) {
   const [showCredentials, setShowCredentials] = useState(false);
   const [purchasedServices, setPurchasedServices] = useState<any[]>([]);
   const [purchaseDetails, setPurchaseDetails] = useState<any>(null);
+  const [userSubscription, setUserSubscription] = useState<any>(null); // Suscripción del usuario
 
   useEffect(() => {
     refreshWallet();
   }, []);
 
   const openPayment = (data: PaymentData) => {
-    setPaymentData(data);
+    // Calcular descuento si el usuario tiene suscripción activa
+    let finalPrice = data.price;
+    let discountApplied = 0;
+    
+    if (userSubscription && userSubscription.status === 'active' && userSubscription.current_period_end) {
+      const endDate = new Date(userSubscription.current_period_end);
+      if (endDate > new Date()) {
+        // Suscripción activa, verificar si es categoría IPTV o Streaming
+        // Por ahora, asumimos que es Netflix/Streaming y aplicamos 20% descuento
+        discountApplied = 0.20;
+        finalPrice = data.price * (1 - discountApplied);
+      }
+    }
+    
+    setPaymentData({
+      ...data,
+      originalPrice: data.price,
+      price: finalPrice,
+      discount: discountApplied
+    });
     setIsOpen(true);
   };
 
@@ -49,6 +74,10 @@ export function PaymentProvider({ children }: { children: ReactNode }) {
       const result = await getOverview();
       if (result.ok && result.data) {
         setWalletBalance(result.data.wallet_balance || 0);
+        // También cargar la suscripción del usuario
+        if (result.data.subscription) {
+          setUserSubscription(result.data.subscription);
+        }
       }
     } catch (error) {
       console.error('Error refreshing wallet:', error);
@@ -57,6 +86,13 @@ export function PaymentProvider({ children }: { children: ReactNode }) {
 
   const handlePayment = async (method: string) => {
     if (!paymentData) return;
+
+    // Detectar si es una suscripción
+    const isSubscription = paymentData.isSubscription;
+    if (isSubscription && paymentData.subscriptionType && paymentData.billingCycle) {
+      await handleSubscriptionPayment(method, paymentData);
+      return;
+    }
 
     // Detectar si es un producto de créditos (recarga de billetera)
     const isCreditProduct = paymentData.productCode.startsWith('CREDITS_');
@@ -234,6 +270,80 @@ export function PaymentProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const handleSubscriptionPayment = async (method: string, data: PaymentData) => {
+    if (!data.subscriptionType || !data.billingCycle) {
+      alert('Datos de suscripción incompletos');
+      return;
+    }
+
+    try {
+      let result;
+
+      if (method === 'WALLET') {
+        // Billetera: verificar balance
+        alert('⏳ Procesando con billetera...');
+        // TODO: Implementar compra de suscripción con billetera
+        return;
+      } else if (method === 'CARD') {
+        // Stripe
+        const checkoutData = {
+          subscriptionType: data.subscriptionType,
+          billingCycle: data.billingCycle,
+          price: data.price
+        };
+        result = await createSubscriptionCheckout(checkoutData);
+        
+        if (result.ok && result.data?.checkout_url) {
+          closePayment();
+          window.location.href = result.data.checkout_url;
+          return;
+        }
+      } else if (method === 'PAYPAL') {
+        // PayPal
+        const checkoutData = {
+          subscriptionType: data.subscriptionType,
+          billingCycle: data.billingCycle,
+          price: data.price
+        };
+        result = await createSubscriptionPayPalCheckout(checkoutData);
+        
+        if (result.ok && result.data?.approval_url) {
+          closePayment();
+          window.location.href = result.data.approval_url;
+          return;
+        }
+      } else if (method === 'SINPE') {
+        // SINPE
+        const checkoutData = {
+          subscriptionType: data.subscriptionType,
+          billingCycle: data.billingCycle,
+          price: data.price
+        };
+        result = await createSubscriptionSinpeCheckout(checkoutData);
+        
+        if (result.ok && result.data?.order_number) {
+          const params = new URLSearchParams({
+            amount: data.price.toString(),
+            service: data.service,
+            plan: data.plan,
+            order: result.data.order_number,
+            phone: result.data.instructions?.phone || '8888-8888',
+            type: 'subscription'
+          });
+          closePayment();
+          window.location.href = `/sinpe-payment?${params.toString()}`;
+          return;
+        }
+      }
+
+      // Si llegamos aquí, hubo un error
+      alert(`❌ Error: ${result?.error || 'No se pudo procesar la suscripción'}`);
+    } catch (error) {
+      console.error('Error en handleSubscriptionPayment:', error);
+      alert('❌ Error al procesar el pago de suscripción');
+    }
+  };
+
   const handleWalletRecharge = async (amount: number, method: string) => {
     if (!['CARD', 'SINPE', 'BINANCE', 'PAYPAL'].includes(method)) {
       alert('Método de pago no soportado');
@@ -326,6 +436,8 @@ export function PaymentProvider({ children }: { children: ReactNode }) {
           walletBalance={walletBalance}
           onPayment={handlePayment}
           onWalletRecharge={handleWalletRecharge}
+          originalPrice={paymentData.originalPrice}
+          discount={paymentData.discount}
         />
       )}
       <CredentialsModal

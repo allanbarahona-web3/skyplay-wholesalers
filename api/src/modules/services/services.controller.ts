@@ -78,9 +78,10 @@ export class ServicesController {
       );
 
       const hasActiveSubscription = subResult.rows.length > 0;
-      const discount = hasActiveSubscription ? 0.30 : 0; // 30% descuento si tiene suscripción
-      const unitPrice = parseFloat(product.price);
-      const totalPrice = unitPrice * quantity * (1 - discount);
+      const discount = hasActiveSubscription ? 0.20 : 0; // 20% descuento por Suscripción Preferencial // 30% descuento si tiene suscripción
+      const catalogPrice = parseFloat(product.price);
+      const unitPrice = catalogPrice * (1 - discount); // Precio con descuento aplicado
+      const totalPrice = unitPrice * quantity;
 
       // 3. Verificar saldo en billetera
       const tenantResult = await client.query(
@@ -170,7 +171,8 @@ export class ServicesController {
             product_code,
             product_name: product.name,
             quantity,
-            unit_price: unitPrice,
+            catalog_price: catalogPrice,
+            unit_price: unitPrice, // Precio con descuento
             total_price: totalPrice,
             discount_applied: discount,
             service_ids: services.map(s => s.id)
@@ -275,9 +277,10 @@ export class ServicesController {
       );
 
       const hasActiveSubscription = subResult.rows.length > 0;
-      const discount = hasActiveSubscription ? 0.30 : 0;
-      const unitPrice = parseFloat(product.price);
-      const totalPrice = unitPrice * quantity * (1 - discount);
+      const discount = hasActiveSubscription ? 0.20 : 0; // 20% descuento por Suscripción Preferencial
+      const catalogPrice = parseFloat(product.price);
+      const unitPrice = catalogPrice * (1 - discount); // Precio con descuento aplicado
+      const totalPrice = unitPrice * quantity;
 
       // 3. Generar order number único
       const orderNumber = this.generateOrderNumber();
@@ -294,7 +297,8 @@ export class ServicesController {
             product_code,
             product_name: product.name,
             quantity,
-            unit_price: unitPrice,
+            catalog_price: catalogPrice,
+            unit_price: unitPrice, // Precio con descuento
             total_price: totalPrice,
             discount_applied: discount,
             status: 'pending'
@@ -336,7 +340,12 @@ export class ServicesController {
       return res.json({ 
         checkout_url: session.url, 
         order_number: orderNumber,
-        order_id: orderId
+        order_id: orderId,
+        unit_price: unitPrice,
+        total_price: totalPrice,
+        discount: discount,
+        discount_percentage: Math.round(discount * 100),
+        final_price: totalPrice
       });
     } catch (error) {
       console.error('Error creating checkout:', error);
@@ -393,9 +402,10 @@ export class ServicesController {
       );
 
       const hasActiveSubscription = subResult.rows.length > 0;
-      const discount = hasActiveSubscription ? 0.30 : 0;
-      const unitPrice = parseFloat(product.price);
-      const totalPrice = unitPrice * quantity * (1 - discount);
+      const discount = hasActiveSubscription ? 0.20 : 0; // 20% descuento por Suscripción Preferencial
+      const catalogPrice = parseFloat(product.price);
+      const unitPrice = catalogPrice * (1 - discount); // Precio con descuento aplicado
+      const totalPrice = unitPrice * quantity;
 
       // 3. Generar order number
       const orderNumber = this.generateOrderNumber();
@@ -412,7 +422,8 @@ export class ServicesController {
             product_code,
             product_name: product.name,
             quantity,
-            unit_price: unitPrice,
+            catalog_price: catalogPrice,
+            unit_price: unitPrice, // Precio con descuento
             total_price: totalPrice,
             discount_applied: discount,
             status: 'pending'
@@ -494,9 +505,10 @@ export class ServicesController {
       );
 
       const hasActiveSubscription = subResult.rows.length > 0;
-      const discount = hasActiveSubscription ? 0.30 : 0;
-      const unitPrice = parseFloat(product.price);
-      const totalPrice = unitPrice * quantity * (1 - discount);
+      const discount = hasActiveSubscription ? 0.20 : 0; // 20% descuento por Suscripción Preferencial
+      const catalogPrice = parseFloat(product.price);
+      const unitPrice = catalogPrice * (1 - discount); // Precio con descuento aplicado
+      const totalPrice = unitPrice * quantity;
 
       // 3. Generar order number único
       const orderNumber = this.generateOrderNumber();
@@ -513,7 +525,8 @@ export class ServicesController {
             product_code,
             product_name: product.name,
             quantity,
-            unit_price: unitPrice,
+            catalog_price: catalogPrice,
+            unit_price: unitPrice, // Precio con descuento
             total_price: totalPrice,
             discount_applied: discount,
             status: 'pending'
@@ -797,7 +810,7 @@ async renew(@Param('id') serviceId: string, @Req() req: Request, @Res() res: Res
   }
   // Aplicar descuento solo si la suscripción está vigente
   const originalPrice = parseFloat(service.price);
-  const discount = hasActiveSubscription ? 0.30 : 0;
+  const discount = hasActiveSubscription ? 0.20 : 0; // 20% descuento por Suscripción Preferencial
   const finalPrice = originalPrice * (1 - discount);
 
   // Crear orden con precio final
@@ -871,7 +884,7 @@ async renewFromWallet(@Param('id') serviceId: string, @Req() req: Request, @Res(
     }
 
     const originalPrice = parseFloat(service.price);
-    const discount = hasActiveSubscription ? 0.30 : 0;
+    const discount = hasActiveSubscription ? 0.20 : 0; // 20% descuento por Suscripción Preferencial
     const finalPrice = originalPrice * (1 - discount);
 
     // 4. Obtener balance del tenant
@@ -997,7 +1010,7 @@ async createCheckout(
     }
   }
   // Aplicar descuento solo si la suscripción está vigente
-  const discount = hasActiveSubscription ? 0.30 : 0;
+  const discount = hasActiveSubscription ? 0.20 : 0; // 20% descuento por Suscripción Preferencial
   const originalPrice = parseFloat(order.price);
   const finalPrice = originalPrice * (1 - discount);
 

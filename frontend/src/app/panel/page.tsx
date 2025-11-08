@@ -4,6 +4,7 @@ import React, { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { usePayment } from "@/components/PaymentContext";
 import { getOrderCredentials } from "@/lib/api";
+import { cancelSubscription } from "@/lib/api";
 import CredentialsModal from "@/components/CredentialsModal";
 
 // Tipos básicos
@@ -18,6 +19,8 @@ type Service = {
   credential_password?: string;
   profile_name?: string;
   pin?: string;
+  price?: number; // Precio del producto
+  discounted_price?: number; // Precio con descuento aplicado
 };
 
 type Order = {
@@ -78,7 +81,7 @@ function isNewService(s: Service): boolean {
 function Modal({ open, onClose, children }: { open: boolean; onClose: () => void; children: React.ReactNode }) {
   if (!open) return null;
   return (
-    <div className="modal modal-flex">
+    <div className={`modal modal-flex${open ? ' open' : ''}`}>
       <div className="card modal-card">
         <button className="btn secondary modal-close" onClick={onClose}>✕</button>
         {children}
@@ -94,14 +97,19 @@ export default function PanelMayoristaPage() {
   // Estados principales
   const [services, setServices] = useState<Service[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
-  const [subscription, setSubscription] = useState<Subscription>({ status: "active", current_period_end: new Date(Date.now() + 30*24*60*60*1000).toISOString() });
+  const [subscription, setSubscription] = useState<Subscription>({ status: "active", current_period_end: new Date(Date.now() - 5*24*60*60*1000).toISOString() });
+  const [crmBasic, setCrmBasic] = useState<any>({ status: "inactive" });
+  const [crmPro, setCrmPro] = useState<any>({ status: "inactive" });
   const [filter, setFilter] = useState<string>("all");
   const [period, setPeriod] = useState<string>("all");
   const [search, setSearch] = useState<string>("");
   const [searchError, setSearchError] = useState<string>("");
-  const [modalSubscriptionOpen, setModalSubscriptionOpen] = useState(false);
+  const [expandedAccordions, setExpandedAccordions] = useState<string[]>(["subscription"]);
   const [selectedPlan, setSelectedPlan] = useState<string | null>(null);
   const [selectedAmount, setSelectedAmount] = useState<number>(0);
+  const [selectedCRMPlan, setSelectedCRMPlan] = useState<string | null>(null);
+  const [selectedCRMAmount, setSelectedCRMAmount] = useState<number>(0);
+  const [addCRMPlusUpsell, setAddCRMPlusUpsell] = useState<boolean>(false);
   const [toastMsg, setToastMsg] = useState<string>("");
   const [toastOk, setToastOk] = useState<boolean>(false);
   
@@ -252,6 +260,7 @@ export default function PanelMayoristaPage() {
       
       // Cargar servicios activos
       if (data.active_services) {
+        console.log('🔍 Frontend received active_services:', data.active_services.slice(0, 1));
         const mappedServices = data.active_services.map((s: any) => ({
           id: s.id,
           product_name: s.product_name || s.product_code,
@@ -262,8 +271,11 @@ export default function PanelMayoristaPage() {
           credential_email: s.credential_email,
           credential_password: s.credential_password,
           profile_name: s.profile_name,
-          pin: s.pin
+          pin: s.pin,
+          price: parseFloat(s.price) || 0,
+          discounted_price: parseFloat(s.discounted_price) || 0
         }));
+        console.log('🔍 Mapped services (first):', mappedServices.slice(0, 1));
         setServices(mappedServices);
       }
 
@@ -275,6 +287,20 @@ export default function PanelMayoristaPage() {
       // Cargar suscripción
       if (data.subscription) {
         setSubscription(data.subscription);
+      }
+
+      // Cargar CRM BASIC
+      if (data.crm_basic) {
+        setCrmBasic(data.crm_basic);
+      } else {
+        setCrmBasic({ status: "inactive" });
+      }
+
+      // Cargar CRM PRO
+      if (data.crm_pro) {
+        setCrmPro(data.crm_pro);
+      } else {
+        setCrmPro({ status: "inactive" });
       }
     } catch (error) {
       console.error('Error loading overview data:', error);
@@ -294,29 +320,58 @@ export default function PanelMayoristaPage() {
   // Acciones
   const { openPayment, walletBalance, refreshWallet } = usePayment();
 
-  const handleRenew = (service: Service) => {
-    // Usar el modal global de pagos
-    openPayment({
-      service: service.product_name,
-      plan: 'Renovación 1 mes',
-      price: 7.95, // Precio con descuento
-      productCode: service.product_code,
-      isRenewal: true, // Marcar como renovación
-      serviceId: service.id // Pasar el ID del servicio
-    });
+  const handleRenew = async (service: Service) => {
+    // Obtener el precio REAL del catálogo para este producto
+    try {
+      const response = await fetch(`http://localhost:3000/api/me/products/${service.product_code}/price`, {
+        credentials: 'include'
+      });
+      
+      if (!response.ok) {
+        throw new Error('Error al obtener precio');
+      }
+      
+      const productData = await response.json();
+      const catalogPrice = parseFloat(productData.price) || 0;
+      
+      // Verificar si tiene suscripción activa para aplicar descuento
+      let finalPrice = catalogPrice;
+      let discountApplied = 0;
+      
+      if (subscription.status === 'active' && subscription.current_period_end) {
+        const endDate = new Date(subscription.current_period_end);
+        if (endDate > new Date()) {
+          // Suscripción activa - aplicar 20% descuento
+          discountApplied = 0.20;
+          finalPrice = catalogPrice * (1 - discountApplied);
+        }
+      }
+      
+      openPayment({
+        service: service.product_name,
+        plan: 'Renovación 1 mes',
+        price: finalPrice,
+        originalPrice: catalogPrice,
+        discount: discountApplied,
+        productCode: service.product_code,
+        isRenewal: true,
+        serviceId: service.id
+      });
+    } catch (error) {
+      console.error('Error al renovar:', error);
+      setToastMsg('Error al obtener precio del producto');
+      setToastOk(false);
+    }
   };
 
   const handleViewCredentials = (service: Service) => {
     setViewingService(service);
   };
 
-  const handleSubscription = () => {
-    setModalSubscriptionOpen(true);
-  };
-  const handleCloseSubscription = () => {
-    setModalSubscriptionOpen(false);
-    setSelectedPlan(null);
-    setSelectedAmount(0);
+  const toggleAccordion = (key: string) => {
+    setExpandedAccordions(prev =>
+      prev.includes(key) ? [] : [key]
+    );
   };
 
   const handleSelectPlan = (plan: string, amount: number) => {
@@ -324,23 +379,9 @@ export default function PanelMayoristaPage() {
     setSelectedAmount(amount);
   };
 
-  const handleProcessPayment = (method: string) => {
-    if (!selectedPlan) {
-      setToastMsg("Selecciona un plan primero");
-      setToastOk(false);
-      return;
-    }
-    if (method === "card") {
-      setToastMsg("Redirigiendo a Stripe...");
-      setToastOk(true);
-      setTimeout(() => {
-        handleCloseSubscription();
-      }, 1000);
-    } else {
-      setToastMsg(`Método ${method.toUpperCase()} en desarrollo`);
-      setToastOk(false);
-      handleCloseSubscription();
-    }
+  const handleSelectCRMPlan = (plan: string, amount: number) => {
+    setSelectedCRMPlan(plan);
+    setSelectedCRMAmount(amount);
   };
 
   // Validación de búsqueda
@@ -351,6 +392,58 @@ export default function PanelMayoristaPage() {
       setSearchError("Ingresa al menos 3 caracteres para buscar");
     } else {
       setSearchError("");
+    }
+  };
+
+  // Cerrar acordeones al hacer clic fuera
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as HTMLElement;
+      
+      // Si el clic es fuera de las tarjetas de acción, cerrar acordeones
+      if (!target.closest('.action-card') && expandedAccordions.length > 0) {
+        setExpandedAccordions([]);
+      }
+    };
+
+    // Solo agregar listener si hay acordeones expandidos
+    if (expandedAccordions.length > 0) {
+      document.addEventListener('click', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('click', handleClickOutside);
+    };
+  }, [expandedAccordions]);
+
+  const handleCancelSubscription = async () => {
+    if (!subscription.stripe_subscription_id) {
+      setToastMsg('No se encontró suscripción');
+      setToastOk(false);
+      return;
+    }
+
+    if (!confirm('¿Estás seguro de que deseas cancelar tu suscripción? Perderás los descuentos preferenciales.')) {
+      return;
+    }
+
+    try {
+      const result = await cancelSubscription(subscription.stripe_subscription_id);
+      if (result.ok) {
+        setToastMsg('✅ Suscripción cancelada exitosamente');
+        setToastOk(true);
+        setSubscription({ status: 'inactive' });
+        // Recargar datos después de 2 segundos
+        setTimeout(() => {
+          loadOverviewData();
+        }, 2000);
+      } else {
+        setToastMsg(`❌ Error: ${result.error}`);
+        setToastOk(false);
+      }
+    } catch (error) {
+      setToastMsg('❌ Error al cancelar suscripción');
+      setToastOk(false);
     }
   };
 
@@ -397,17 +490,21 @@ export default function PanelMayoristaPage() {
 
       {/* Status badges */}
       <div className="panel-status-bar">
-        <div className="status-badge status-active">
-          <span className="status-icon">✓</span>
-          <span>Suscripción Activa</span>
+        <div className={`status-badge ${subscription.status === "active" ? "status-active" : "status-inactive"}`}>
+          <span className="status-icon">{subscription.status === "active" ? "✓" : "○"}</span>
+          <span>Suscripción {subscription.status === "active" ? "Activa" : "Inactiva"}</span>
+        </div>
+        <div className={`status-badge ${crmBasic.status === "active" ? "status-active" : "status-inactive"}`}>
+          <span className="status-icon">{crmBasic.status === "active" ? "✓" : "○"}</span>
+          <span>CRM BASIC {crmBasic.status === "active" ? "Activo" : "Inactivo"}</span>
+        </div>
+        <div className={`status-badge ${crmPro.status === "active" ? "status-active" : "status-inactive"}`}>
+          <span className="status-icon">{crmPro.status === "active" ? "✓" : "○"}</span>
+          <span>CRM PRO {crmPro.status === "active" ? "Activo" : "Inactivo"}</span>
         </div>
         <div className="status-badge status-inactive">
           <span className="status-icon">○</span>
           <span>Tienda: No activa</span>
-        </div>
-        <div className="status-badge status-active">
-          <span className="status-icon">✓</span>
-          <span>Estado: Activo</span>
         </div>
       </div>
 
@@ -428,7 +525,23 @@ export default function PanelMayoristaPage() {
       </div>
 
       {/* Premium action cards */}
-      <div className="panel-action-cards">
+      {expandedAccordions.length > 0 && (
+        <div 
+          className="accordion-overlay"
+          onClick={() => setExpandedAccordions([])}
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.3)',
+            zIndex: 10,
+            cursor: 'pointer'
+          }}
+        />
+      )}
+      <div className="panel-action-cards" style={{ position: 'relative', zIndex: expandedAccordions.length > 0 ? 11 : 'auto' }}>
         <div className="action-card">
           {subscription.status === "active" ? (
             <>
@@ -438,7 +551,7 @@ export default function PanelMayoristaPage() {
               <p className="action-card-date">
                 {new Date(subscription.current_period_end || "").toLocaleDateString("es-ES", { day: "numeric", month: "long", year: "numeric" })}
               </p>
-              <button className="btn-secondary-full" onClick={() => alert("Cancelar suscripción")}>
+              <button className="btn-secondary-full" onClick={handleCancelSubscription}>
                 Cancelar Suscripción
               </button>
             </>
@@ -446,20 +559,223 @@ export default function PanelMayoristaPage() {
             <>
               <div className="action-card-icon">🎯</div>
               <h3 className="action-card-title">Suscripción Preferencial</h3>
-              <p className="action-card-desc">Obtén descuentos automáticos en todos los productos del catálogo.</p>
-              <button className="btn-primary-full" onClick={handleSubscription}>
-                Activar Suscripción
+              <p className="action-card-desc">Obtén descuentos automáticos en todos los productos streaming.</p>
+              <div className="discount-badge">📊 Obtén 20% descuento en Streaming</div>
+              <button className="btn-primary-full" onClick={() => toggleAccordion("subscription")}>
+                {expandedAccordions.includes("subscription") ? "Ocultar" : "Más información"} {expandedAccordions.includes("subscription") ? "▼" : "▶"}
               </button>
               <p className="action-card-note">Desde $7.96/mes con plan semestral</p>
+              
+              {expandedAccordions.includes("subscription") && (
+                <div style={{ marginTop: "20px", paddingTop: "20px", borderTop: "1px solid #e5e7eb" }}>
+                  <h3 className="sub-pay-title">Elige tu plan</h3>
+                  <div className="sub-paygrid">
+                    <div className={`card sub-card${selectedPlan === "monthly" ? " selected" : ""}`} onClick={() => handleSelectPlan("monthly", 9.95)}>
+                      <div className="sub-card-row">
+                        <div>
+                          <h3 className="sub-card-title">Mensual</h3>
+                          <p className="muted sub-card-desc">Pago mes a mes, sin compromiso</p>
+                        </div>
+                        <div className="sub-card-right">
+                          <div className="sub-card-price">$9.95</div>
+                          <div className="muted sub-card-mes">/mes</div>
+                        </div>
+                      </div>
+                    </div>
+                    <div className={`card sub-card${selectedPlan === "quarterly" ? " selected" : ""}`} onClick={() => handleSelectPlan("quarterly", 26.87)}>
+                      <div className="sub-card-row">
+                        <div>
+                          <h3 className="sub-card-title">3 Meses <span className="sub-card-badge">-10%</span></h3>
+                          <p className="muted sub-card-desc">Ahorra $2.98 • $8.96/mes</p>
+                        </div>
+                        <div className="sub-card-right">
+                          <div className="sub-card-price">$26.87</div>
+                          <div className="muted sub-card-mes sub-card-old">$29.85</div>
+                        </div>
+                      </div>
+                    </div>
+                    <div className={`card sub-card${selectedPlan === "semiannual" ? " selected" : ""}`} onClick={() => handleSelectPlan("semiannual", 47.76)}>
+                      <div className="sub-card-best">Mejor valor</div>
+                      <div className="sub-card-row">
+                        <div>
+                          <h3 className="sub-card-title">6 Meses <span className="sub-card-badge">-20%</span></h3>
+                          <p className="muted sub-card-desc">Ahorra $11.94 • $7.96/mes</p>
+                        </div>
+                        <div className="sub-card-right">
+                          <div className="sub-card-price">$47.76</div>
+                          <div className="muted sub-card-mes sub-card-old">$59.70</div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <button 
+                    className="btn btn-primary" 
+                    onClick={() => {
+                      if (!selectedPlan) {
+                        setToastMsg("Selecciona un plan primero");
+                        setToastOk(false);
+                        return;
+                      }
+                      
+                      // Si tiene checkbox de CRM PLUS marcado, enviar ambos productos
+                      if (addCRMPlusUpsell) {
+                        openPayment({
+                          service: 'Suscripción Preferencial + CRM PLUS',
+                          plan: (selectedPlan === 'monthly' ? 'Mensual' : selectedPlan === 'quarterly' ? '3 Meses' : '6 Meses') + ' (Ambos)',
+                          price: selectedAmount + 7.50,
+                          productCode: 'subscription-pref,crm-basic',
+                          isRenewal: false,
+                          isSubscription: true,
+                          subscriptionType: 'subscription-pref',
+                          billingCycle: selectedPlan === 'monthly' ? 'monthly' : selectedPlan === 'quarterly' ? 'quarterly' : 'semiannual'
+                        });
+                      } else {
+                        openPayment({
+                          service: 'Suscripción Preferencial',
+                          plan: selectedPlan === 'monthly' ? 'Mensual' : selectedPlan === 'quarterly' ? '3 Meses' : '6 Meses',
+                          price: selectedAmount,
+                          productCode: 'subscription-pref',
+                          isRenewal: false,
+                          isSubscription: true,
+                          subscriptionType: 'subscription-pref',
+                          billingCycle: selectedPlan === 'monthly' ? 'monthly' : selectedPlan === 'quarterly' ? 'quarterly' : 'semiannual'
+                        });
+                      }
+                    }}
+                    style={{ width: '100%', marginTop: '20px' }}
+                  >
+                    Continuar al Pago {addCRMPlusUpsell ? `→ $${(selectedAmount + 7.50).toFixed(2)}` : '→'}
+                  </button>
+
+                  {selectedPlan && (
+                    <div style={{ 
+                      marginTop: '20px', 
+                      padding: '15px', 
+                      backgroundColor: '#f0f9ff', 
+                      border: '2px solid #0ea5e9',
+                      borderRadius: '8px'
+                    }}>
+                      <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer', gap: '12px' }}>
+                        <input
+                          type="checkbox"
+                          checked={addCRMPlusUpsell}
+                          onChange={(e) => setAddCRMPlusUpsell(e.target.checked)}
+                          style={{
+                            width: '20px',
+                            height: '20px',
+                            cursor: 'pointer',
+                            accentColor: '#0ea5e9'
+                          }}
+                        />
+                        <div>
+                          <p style={{ fontSize: '14px', color: '#0369a1', margin: 0, fontWeight: 'bold' }}>
+                            💡 Agregar CRM PLUS
+                          </p>
+                          <p style={{ fontSize: '12px', color: '#0c4a6e', margin: '4px 0 0 0' }}>
+                            Gestiona a tus clientes con herramientas profesionales (+$7.50/mes)
+                          </p>
+                        </div>
+                      </label>
+                    </div>
+                  )}
+                </div>
+              )}
             </>
+          )}
+        </div>
+        <div className="action-card">
+          <div className="action-card-icon blue">🤖</div>
+          <h3 className="action-card-title">CRM</h3>
+          <p className="action-card-desc">Gestiona tu base de clientes con herramientas CRM profesionales.</p>
+          <div className="discount-badges-row">
+            <div className="discount-badge">⭐ CRM PRO: Obtén 25% descuento</div>
+          </div>
+          <button className="btn-blue-full" onClick={() => toggleAccordion("crm")}>
+            {expandedAccordions.includes("crm") ? "Ocultar" : "Más información"} {expandedAccordions.includes("crm") ? "▼" : "▶"}
+          </button>
+          <p className="action-card-note">Desde $7.50/mes con plan preferencial</p>
+          
+          {expandedAccordions.includes("crm") && (
+            <div style={{ marginTop: "20px", paddingTop: "20px", borderTop: "1px solid #e5e7eb" }}>
+              <div className="sub-paygrid">
+                <div className={`card sub-card${selectedCRMPlan === "crm-basic-monthly" ? " selected" : ""}`} onClick={() => handleSelectCRMPlan("crm-basic-monthly", subscription.status === "active" ? 7.50 : 12.50)}>
+                  <div className="sub-card-row">
+                    <div>
+                      <h3 className="sub-card-title">CRM PLUS</h3>
+                      <p className="muted sub-card-desc">Historial de clientes + Control de Vencimientos + Notas</p>
+                    </div>
+                    <div className="sub-card-right">
+                      <div className="sub-card-price">
+                        {subscription.status === "active" ? "$7.50" : "$12.50"}
+                      </div>
+                      <div className="muted sub-card-mes">/mes</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              {subscription.status !== "active" && (
+                <p className="muted" style={{ fontSize: '12px', marginTop: '12px', marginBottom: '15px', color: '#666', padding: '10px', backgroundColor: '#fffbeb', borderRadius: '6px', border: '1px solid #fcd34d' }}>
+                  💡 <strong>Promoción:</strong> Activa tu Suscripción Preferencial y Obtendrás CRM PLUS por solo <strong>$7.50/mes</strong>
+                </p>
+              )}
+
+              <div className="sub-paygrid" style={{ marginTop: "20px" }}>
+                <div className={`card sub-card${selectedCRMPlan === "crm-pro-monthly" ? " selected" : ""}`} onClick={() => handleSelectCRMPlan("crm-pro-monthly", 24.95)}>
+                  <div className="sub-card-best">Recomendado</div>
+                  <div className="sub-card-row">
+                    <div>
+                      <h3 className="sub-card-title">CRM PRO</h3>
+                      <p className="muted sub-card-desc"> Todo lo de Basic + 25% Descuento Streaming + Recordatorios Automáticos SMS/Email + Analytics</p>
+                    </div>
+                    <div className="sub-card-right">
+                      <div className="sub-card-price">$24.95</div>
+                      <div className="muted sub-card-mes">/mes</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <p className="muted" style={{ fontSize: '12px', marginTop: '10px', marginBottom: '15px', color: '#666' }}>
+                ⭐ Incluye recordatorios automáticos de vencimiento por SMS y Email (no es marketing)
+              </p>
+
+              <button 
+                className="btn btn-primary" 
+                onClick={() => {
+                  if (!selectedCRMPlan) {
+                    setToastMsg("Selecciona un plan CRM primero");
+                    setToastOk(false);
+                    return;
+                  }
+                  
+                  let crmType = '';
+                  if (selectedCRMPlan === 'crm-basic-monthly') {
+                    crmType = 'CRM BASIC';
+                  } else {
+                    crmType = 'CRM PRO';
+                  }
+                  
+                  openPayment({
+                    service: crmType,
+                    plan: 'Mensual',
+                    price: selectedCRMAmount,
+                    productCode: selectedCRMPlan === 'crm-basic-monthly' ? 'crm-basic' : 'crm-pro',
+                    isRenewal: false
+                  });
+                }}
+                style={{ width: '100%', marginTop: '20px' }}
+              >
+                Continuar al Pago →
+              </button>
+            </div>
           )}
         </div>
         <div className="action-card">
           <div className="action-card-icon purple">🛍️</div>
           <h3 className="action-card-title">Tienda Personalizada</h3>
           <p className="action-card-desc">Vende a tus clientes con tu propia marca y dominio personalizado.</p>
+          <div className="discount-badge">🏪 Obtén 30% descuento en productos</div>
           <button className="btn-purple-full" onClick={() => alert("Próximamente disponible")}>
-            Activar Mi Tienda
+            Más información
           </button>
           <p className="action-card-note">Próximamente disponible</p>
         </div>
@@ -552,8 +868,8 @@ export default function PanelMayoristaPage() {
                         </span>
                       </td>
                       <td className="td-date">{fmtDate(s.expires_at)}</td>
-                      <td className="td-price">$9.95</td>
-                      <td className="td-price discount">$7.95</td>
+                      <td className="td-price">${(typeof s.price === 'number' ? s.price : 0).toFixed(2)}</td>
+                      <td className="td-price discount">${(typeof s.discounted_price === 'number' ? s.discounted_price : 0).toFixed(2)}</td>
                       <td className="td-action">
                         <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
                           <button 
@@ -633,58 +949,6 @@ export default function PanelMayoristaPage() {
           </div>
         </section>
       </div>
-
-      {/* Modal Suscripción Preferencial */}
-      <Modal open={modalSubscriptionOpen} onClose={handleCloseSubscription}>
-        <h2>🎯 Activar Suscripción Preferencial</h2>
-        <p className="muted">Elige tu plan y obtén descuentos en todos los productos del catálogo.</p>
-        <div className="sub-paygrid">
-          <div className={`card sub-card${selectedPlan === "monthly" ? " selected" : ""}`} onClick={() => handleSelectPlan("monthly", 9.95)}>
-            <div className="sub-card-row">
-              <div>
-                <h3 className="sub-card-title">Mensual</h3>
-                <p className="muted sub-card-desc">Pago mes a mes, sin compromiso</p>
-              </div>
-              <div className="sub-card-right">
-                <div className="sub-card-price">$9.95</div>
-                <div className="muted sub-card-mes">/mes</div>
-              </div>
-            </div>
-          </div>
-          <div className={`card sub-card${selectedPlan === "quarterly" ? " selected" : ""}`} onClick={() => handleSelectPlan("quarterly", 26.87)}>
-            <div className="sub-card-row">
-              <div>
-                <h3 className="sub-card-title">3 Meses <span className="sub-card-badge">-10%</span></h3>
-                <p className="muted sub-card-desc">Ahorra $2.98 • $8.96/mes</p>
-              </div>
-              <div className="sub-card-right">
-                <div className="sub-card-price">$26.87</div>
-                <div className="muted sub-card-mes sub-card-old">$29.85</div>
-              </div>
-            </div>
-          </div>
-          <div className={`card sub-card${selectedPlan === "semiannual" ? " selected" : ""}`} onClick={() => handleSelectPlan("semiannual", 47.76)}>
-            <div className="sub-card-best">Mejor valor</div>
-            <div className="sub-card-row">
-              <div>
-                <h3 className="sub-card-title">6 Meses <span className="sub-card-badge">-20%</span></h3>
-                <p className="muted sub-card-desc">Ahorra $11.94 • $7.96/mes</p>
-              </div>
-              <div className="sub-card-right">
-                <div className="sub-card-price">$47.76</div>
-                <div className="muted sub-card-mes sub-card-old">$59.70</div>
-              </div>
-            </div>
-          </div>
-        </div>
-        <h3 className="sub-pay-title">Selecciona método de pago:</h3>
-        <div className="sub-paygrid">
-          <button className="btn" onClick={() => handleProcessPayment("card")}>💳 Tarjetas</button>
-          <button className="btn pay-binance" onClick={() => handleProcessPayment("binance")}>Binance Pay</button>
-          <button className="btn pay-paypal" onClick={() => handleProcessPayment("paypal")}>PayPal</button>
-          <button className="btn pay-sinpe" onClick={() => handleProcessPayment("sinpe")}>SINPE Móvil</button>
-        </div>
-      </Modal>
 
       {/* Modal de Credenciales (callback PayPal/Stripe) */}
       {showCredentialsModal && purchaseDetails && (

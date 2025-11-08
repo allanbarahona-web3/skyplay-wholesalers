@@ -10,6 +10,8 @@ interface PaymentMethodModalProps {
   walletBalance: number;
   onPayment: (method: string) => void;
   onWalletRecharge: (amount: number, method: string) => void;
+  originalPrice?: number;
+  discount?: number;
 }
 
 export default function PaymentMethodModal({
@@ -20,7 +22,9 @@ export default function PaymentMethodModal({
   price,
   walletBalance,
   onPayment,
-  onWalletRecharge
+  onWalletRecharge,
+  originalPrice,
+  discount
 }: PaymentMethodModalProps) {
   const [selectedTab, setSelectedTab] = useState<'pay' | 'wallet'>('pay');
   const [selectedMethod, setSelectedMethod] = useState<string | null>(null);
@@ -143,8 +147,23 @@ export default function PaymentMethodModal({
             </div>
             <div className="modal-footer">
               <div className="price-display">
-                <span className="price-label">Total</span>
-                <span className="price-amount">${price.toFixed(2)}</span>
+                {discount && discount > 0 && originalPrice && typeof originalPrice === 'number' ? (
+                  <div>
+                    <div style={{ marginBottom: '8px' }}>
+                      <span className="price-label">Precio original:</span>
+                      <span style={{ marginLeft: '8px', textDecoration: 'line-through', color: '#ef4444', fontWeight: 'bold' }}>${originalPrice.toFixed(2)}</span>
+                    </div>
+                    <div>
+                      <span className="price-label">Total con descuento ({Math.round(discount * 100)}%):</span>
+                      <span className="price-amount" style={{ color: '#10b981', marginLeft: '8px' }}>${price.toFixed(2)}</span>
+                    </div>
+                  </div>
+                ) : (
+                  <div>
+                    <span className="price-label">Total</span>
+                    <span className="price-amount">${price.toFixed(2)}</span>
+                  </div>
+                )}
               </div>
               <button className="btn-pay" onClick={handlePayment}>Pagar</button>
             </div>
@@ -206,8 +225,23 @@ export default function PaymentMethodModal({
               <h3 className="modal-section-title">Pagar con saldo</h3>
               <div className="modal-footer">
                 <div className="price-display">
-                  <span className="price-label">Total</span>
-                  <span className="price-amount">${price.toFixed(2)}</span>
+                  {discount && discount > 0 && originalPrice && typeof originalPrice === 'number' ? (
+                    <div>
+                      <div style={{ marginBottom: '8px' }}>
+                        <span className="price-label">Precio original:</span>
+                        <span style={{ marginLeft: '8px', textDecoration: 'line-through', color: '#ef4444', fontWeight: 'bold' }}>${originalPrice.toFixed(2)}</span>
+                      </div>
+                      <div>
+                        <span className="price-label">Total con descuento ({Math.round(discount * 100)}%):</span>
+                        <span className="price-amount" style={{ color: '#10b981', marginLeft: '8px' }}>${price.toFixed(2)}</span>
+                      </div>
+                    </div>
+                  ) : (
+                    <div>
+                      <span className="price-label">Total</span>
+                      <span className="price-amount">${price.toFixed(2)}</span>
+                    </div>
+                  )}
                 </div>
                 <button 
                   className="btn-pay" 

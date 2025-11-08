@@ -176,6 +176,46 @@ export async function getMySubscriptions(): Promise<ApiResponse<any[]>> {
   });
 }
 
+export async function cancelSubscription(subscriptionId: string): Promise<ApiResponse<any>> {
+  return apiFetch('/subscriptions/cancel', {
+    method: 'POST',
+    body: JSON.stringify({ subscription_id: subscriptionId }),
+  });
+}
+
+export async function createSubscriptionCheckout(data: {
+  subscriptionType: string;
+  billingCycle: string;
+  price: number;
+}): Promise<ApiResponse<any>> {
+  return apiFetch('/subscriptions/create-checkout', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function createSubscriptionPayPalCheckout(data: {
+  subscriptionType: string;
+  billingCycle: string;
+  price: number;
+}): Promise<ApiResponse<any>> {
+  return apiFetch('/subscriptions/create-paypal-checkout', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function createSubscriptionSinpeCheckout(data: {
+  subscriptionType: string;
+  billingCycle: string;
+  price: number;
+}): Promise<ApiResponse<any>> {
+  return apiFetch('/subscriptions/create-sinpe-checkout', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
 // ============================================================================
 // ADMIN ENDPOINTS
 // ============================================================================
