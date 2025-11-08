@@ -662,6 +662,88 @@ export class AuthController {
         console.log(`✅ Subscription ${subscription.id} DELETED/CANCELED`);
         break;
       }
+
+      case 'invoice.payment_succeeded': {
+        // Manejo de renovación automática de suscripción
+        const invoice = event.data.object as Stripe.Invoice;
+        
+        // Solo procesar si es una factura de suscripción
+        if (!(invoice as any).subscription) {
+          break;
+        }
+
+        try {
+          // Obtener la suscripción asociada
+          const subscription = await this.stripe.subscriptions.retrieve((invoice as any).subscription as string);
+          const metadata = subscription.metadata || {};
+          const subscriptionType = metadata.subscription_type || 'preferential';
+          const billingCycle = metadata.billing_cycle || 'monthly';
+          const tenantId = metadata.tenant_id ? parseInt(metadata.tenant_id) : null;
+
+          if (!tenantId) {
+            console.warn(`⚠️ invoice.payment_succeeded: No tenant_id in subscription metadata`);
+            break;
+          }
+
+          // Calcular fecha de renovación
+          const renewalDate = new Date((subscription as any).current_period_end * 1000);
+          const amount = (invoice.total || 0) / 100; // Stripe usa centavos
+
+          // Crear billing_event para registrar la renovación
+          await this.pg.query(
+            `INSERT INTO billing_events (
+              tenant_id, event_type, source, order_number, 
+              amount, currency, status, payload, created_at
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+            [
+              tenantId,
+              'subscription_renewed',
+              'STRIPE',
+              invoice.id,
+              amount,
+              (invoice.currency || 'usd').toUpperCase(),
+              'completed',
+              JSON.stringify({
+                subscription_type: subscriptionType,
+                billing_cycle: billingCycle,
+                invoice_id: invoice.id,
+                renewal_date: renewalDate.toISOString(),
+                amount: amount
+              }),
+              new Date().toISOString()
+            ]
+          );
+
+          console.log(`✅ Subscription renewal recorded for tenant ${tenantId}, amount: $${amount}, renewal: ${renewalDate.toISOString()}`);
+
+          // Obtener datos del usuario para enviar email
+          try {
+            const userQuery = `SELECT u.email, u.name FROM users u WHERE u.tenant_id = $1`;
+            const userResult = await this.pg.query(userQuery, [tenantId]);
+            
+            if (userResult.rows.length > 0) {
+              const { email, name } = userResult.rows[0];
+              
+              // Enviar email de renovación
+              await this.emailService.sendRenewalEmail({
+                to: email,
+                tenantName: name || 'Mayorista',
+                productName: 'Suscripción Preferencial',
+                credentials: [],
+                expiresAt: renewalDate.toISOString(),
+                orderNumber: invoice.id,
+                totalPrice: amount
+              });
+            }
+          } catch (emailErr) {
+            console.warn('⚠️ Error sending subscription renewal email:', emailErr);
+            // No fallar el webhook si falla el email
+          }
+        } catch (err: any) {
+          console.error('Error processing subscription renewal:', err && err.message ? err.message : err);
+        }
+        break;
+      }
     }
 
     res.json({ received: true });
