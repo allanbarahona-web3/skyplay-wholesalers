@@ -952,14 +952,19 @@ async renewFromWallet(@Param('id') serviceId: string, @Req() req: Request, @Res(
 
     // 8. Enviar email de renovación (después de commit para asegurar que todo se guardó)
     try {
-      // Obtener datos del usuario
-      const userResult = await this.pg.query(
-        `SELECT email, COALESCE((SELECT tenant_name FROM tenants WHERE id = $1), 'Mayorista') as tenant_name FROM users WHERE id IN (SELECT user_id FROM tenants WHERE id = $1)`,
+      // Obtener email y nombre del tenant igual que en compra
+      const userEmailResult = await this.pg.query(
+        `SELECT u.email, t.name as tenant_name 
+         FROM users u 
+         JOIN tenants t ON u.tenant_id = t.id 
+         WHERE u.tenant_id = $1 
+         LIMIT 1`,
         [tenant_id]
       );
-      const user = userResult.rows[0];
 
-      if (user) {
+      if (userEmailResult.rows.length > 0 && userEmailResult.rows[0].email) {
+        const user = userEmailResult.rows[0];
+
         // Obtener credenciales del servicio
         const credResult = await this.pg.query(
           `SELECT email, password, profile_name, pin FROM credentials WHERE id = (SELECT credential_id FROM services WHERE id = $1)`,
@@ -970,7 +975,7 @@ async renewFromWallet(@Param('id') serviceId: string, @Req() req: Request, @Res(
         if (cred) {
           await this.emailService.sendRenewalEmail({
             to: user.email,
-            tenantName: user.tenant_name || 'Mayorista',
+            tenantName: user.tenant_name,
             productName: service.product_code,
             credentials: [{
               email: cred.email,

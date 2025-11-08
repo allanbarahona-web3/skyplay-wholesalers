@@ -474,49 +474,60 @@ export class AuthController {
 
       // Enviar email de renovación (después de commit)
       try {
-        // Obtener datos del servicio y usuario
+        // Obtener datos del servicio
         const serviceData = await this.pg.query(
-          `SELECT s.credential_id, s.product_code, s.expires_at, u.email, COALESCE(t.name, 'Mayorista') as tenant_name
+          `SELECT s.credential_id, s.product_code, s.expires_at, s.tenant_id
            FROM services s
-           JOIN tenants t ON s.tenant_id = t.id
-           JOIN users u ON t.id = (SELECT tenant_id FROM tenants WHERE id = t.id LIMIT 1)
            WHERE s.id = $1`,
           [serviceId]
         );
         const srvData = serviceData.rows[0];
 
         if (srvData && srvData.credential_id) {
-          // Obtener credenciales
-          const credResult = await this.pg.query(
-            `SELECT email, password, profile_name, pin FROM credentials WHERE id = $1`,
-            [srvData.credential_id]
+          // Obtener email del usuario igual que en compra
+          const userResult = await this.pg.query(
+            `SELECT u.email, t.name as tenant_name 
+             FROM users u 
+             JOIN tenants t ON u.tenant_id = t.id 
+             WHERE u.tenant_id = $1 
+             LIMIT 1`,
+            [srvData.tenant_id]
           );
-          const cred = credResult.rows[0];
+          const user = userResult.rows[0];
 
-          if (cred) {
-            // Obtener el payload del evento para obtener el precio
-            const eventData = await this.pg.query(
-              `SELECT payload FROM billing_events WHERE id = $1`,
-              [orderId]
+          if (user && user.email) {
+            // Obtener credenciales
+            const credResult = await this.pg.query(
+              `SELECT email, password, profile_name, pin FROM credentials WHERE id = $1`,
+              [srvData.credential_id]
             );
-            const event = eventData.rows[0];
-            const eventPayload = event?.payload || {};
+            const cred = credResult.rows[0];
 
-            await this.emailService.sendRenewalEmail({
-              to: srvData.email,
-              tenantName: srvData.tenant_name,
-              productName: srvData.product_code,
-              credentials: [{
-                email: cred.email,
-                password: cred.password,
-                profile_name: cred.profile_name,
-                pin: cred.pin
-              }],
-              expiresAt: new Date(srvData.expires_at).toISOString(),
-              orderNumber: session.metadata.order_number,
-              totalPrice: eventPayload.unit_price || eventPayload.amount || 0,
-              discountApplied: eventPayload.discount_applied ? Math.round(eventPayload.discount_applied * 100) : 0
-            }).catch(err => console.error('Error sending renewal email (Stripe):', err));
+            if (cred) {
+              // Obtener el payload del evento para obtener el precio
+              const eventData = await this.pg.query(
+                `SELECT payload FROM billing_events WHERE id = $1`,
+                [orderId]
+              );
+              const event = eventData.rows[0];
+              const eventPayload = event?.payload || {};
+
+              await this.emailService.sendRenewalEmail({
+                to: user.email,
+                tenantName: user.tenant_name || 'Mayorista',
+                productName: srvData.product_code,
+                credentials: [{
+                  email: cred.email,
+                  password: cred.password,
+                  profile_name: cred.profile_name,
+                  pin: cred.pin
+                }],
+                expiresAt: new Date(srvData.expires_at).toISOString(),
+                orderNumber: session.metadata.order_number,
+                totalPrice: eventPayload.unit_price || eventPayload.amount || 0,
+                discountApplied: eventPayload.discount_applied ? Math.round(eventPayload.discount_applied * 100) : 0
+              }).catch(err => console.error('Error sending renewal email (Stripe):', err));
+            }
           }
         }
       } catch (emailError) {
@@ -836,41 +847,52 @@ export class AuthController {
 
               // Enviar email de renovación (después de commit)
               try {
-                // Obtener datos del servicio y usuario
+                // Obtener datos del servicio
                 const serviceData = await this.pg.query(
-                  `SELECT s.credential_id, s.product_code, s.expires_at, u.email, COALESCE(t.name, 'Mayorista') as tenant_name
+                  `SELECT s.credential_id, s.product_code, s.expires_at, s.tenant_id
                    FROM services s
-                   JOIN tenants t ON s.tenant_id = t.id
-                   JOIN users u ON t.id = (SELECT tenant_id FROM tenants WHERE id = t.id LIMIT 1)
                    WHERE s.id = $1`,
                   [serviceId]
                 );
                 const srvData = serviceData.rows[0];
 
                 if (srvData && srvData.credential_id) {
-                  // Obtener credenciales
-                  const credResult = await this.pg.query(
-                    `SELECT email, password, profile_name, pin FROM credentials WHERE id = $1`,
-                    [srvData.credential_id]
+                  // Obtener email del usuario igual que en compra
+                  const userResult = await this.pg.query(
+                    `SELECT u.email, t.name as tenant_name 
+                     FROM users u 
+                     JOIN tenants t ON u.tenant_id = t.id 
+                     WHERE u.tenant_id = $1 
+                     LIMIT 1`,
+                    [srvData.tenant_id]
                   );
-                  const cred = credResult.rows[0];
+                  const user = userResult.rows[0];
 
-                  if (cred) {
-                    await this.emailService.sendRenewalEmail({
-                      to: srvData.email,
-                      tenantName: srvData.tenant_name,
-                      productName: srvData.product_code,
-                      credentials: [{
-                        email: cred.email,
-                        password: cred.password,
-                        profile_name: cred.profile_name,
-                        pin: cred.pin
-                      }],
-                      expiresAt: new Date(srvData.expires_at).toISOString(),
-                      orderNumber: payload.order_number,
-                      totalPrice: payload.unit_price || payload.amount || 0,
-                      discountApplied: payload.discount_applied ? Math.round(payload.discount_applied * 100) : 0
-                    }).catch(err => console.error('Error sending renewal email (PayPal):', err));
+                  if (user && user.email) {
+                    // Obtener credenciales
+                    const credResult = await this.pg.query(
+                      `SELECT email, password, profile_name, pin FROM credentials WHERE id = $1`,
+                      [srvData.credential_id]
+                    );
+                    const cred = credResult.rows[0];
+
+                    if (cred) {
+                      await this.emailService.sendRenewalEmail({
+                        to: user.email,
+                        tenantName: user.tenant_name || 'Mayorista',
+                        productName: srvData.product_code,
+                        credentials: [{
+                          email: cred.email,
+                          password: cred.password,
+                          profile_name: cred.profile_name,
+                          pin: cred.pin
+                        }],
+                        expiresAt: new Date(srvData.expires_at).toISOString(),
+                        orderNumber: payload.order_number,
+                        totalPrice: payload.unit_price || payload.amount || 0,
+                        discountApplied: payload.discount_applied ? Math.round(payload.discount_applied * 100) : 0
+                      }).catch(err => console.error('Error sending renewal email (PayPal):', err));
+                    }
                   }
                 }
               } catch (emailError) {
