@@ -929,8 +929,8 @@ export default function PanelMayoristaPage() {
                   <th>Orden</th>
                   <th>Fecha</th>
                   <th>Total</th>
-                  <th>Estado</th>
-                  <th>Origen</th>
+                  <th style={{ minWidth: '140px' }}>Estado</th>
+                  <th>Producto</th>
                 </tr>
               </thead>
               <tbody>
@@ -948,7 +948,7 @@ export default function PanelMayoristaPage() {
                     <td>
                       <span className="badge badge-active">{o.status?.toUpperCase()}</span>
                     </td>
-                    <td className="td-muted">Catálogo</td>
+                    <td className="td-muted">{o.product_name || 'Catálogo'}</td>
                   </tr>
                 ))}
               </tbody>

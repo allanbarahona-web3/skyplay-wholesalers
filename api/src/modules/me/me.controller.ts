@@ -164,7 +164,7 @@ async overview(@Req() req: Request) {
     ) AS status,
     be.source,
     s.product_code,
-    COALESCE(p.name, s.product_code) AS product_name,
+    COALESCE(p.name, s.product_code, be.payload->>'product_name') AS product_name,
     c.email AS credential_email
   FROM billing_events be
   LEFT JOIN services s ON (be.payload->>'service_id')::uuid = s.id
