@@ -8,7 +8,8 @@ import {
   pauseSubscription,
   resumeSubscription,
   cancelSubscriptionAtPeriodEnd,
-  cancelSubscriptionImmediately
+  cancelSubscriptionImmediately,
+  revertSubscriptionCancellation
 } from "@/lib/api";
 import CredentialsModal from "@/components/CredentialsModal";
 import CancelSubscriptionModal from "@/components/CancelSubscriptionModal";
@@ -121,7 +122,6 @@ export default function PanelMayoristaPage() {
   const [selectedAmount, setSelectedAmount] = useState<number>(0);
   const [selectedCRMPlan, setSelectedCRMPlan] = useState<string | null>(null);
   const [selectedCRMAmount, setSelectedCRMAmount] = useState<number>(0);
-  const [addCRMPlusUpsell, setAddCRMPlusUpsell] = useState<boolean>(false);
   const [toastMsg, setToastMsg] = useState<string>("");
   const [toastOk, setToastOk] = useState<boolean>(false);
   
@@ -475,6 +475,23 @@ export default function PanelMayoristaPage() {
     }
   };
 
+  const handleRevertCancellation = async () => {
+    try {
+      const result = await revertSubscriptionCancellation();
+      if (result.ok) {
+        setToastMsg(`✅ ${result.data?.message || 'Cancelación revertida'}`);
+        setToastOk(true);
+        setTimeout(() => loadOverviewData(), 2000);
+      } else {
+        setToastMsg(`❌ Error: ${result.error}`);
+        setToastOk(false);
+      }
+    } catch (error) {
+      setToastMsg('❌ Error al revertir cancelación');
+      setToastOk(false);
+    }
+  };
+
   const handleCancelNow = async () => {
     if (!confirm('⚠️ ADVERTENCIA: Perderás acceso inmediato y el tiempo restante que pagaste. ¿Estás completamente seguro?')) {
       return;
@@ -543,6 +560,9 @@ export default function PanelMayoristaPage() {
             <div className="apple-wallet">
               💰 ${walletBalance.toFixed(2)}
             </div>
+            <button className="apple-btn-link" onClick={() => router.push("/crm")} title="Ir a mi CRM">
+              <span>🤖</span> CRM {crmPro.status === "active" ? "PRO" : "PLUS"}
+            </button>
             <button className="apple-btn-link" onClick={() => router.push("/")}>
               <span>🏪</span> Catálogo Mayorista
             </button>
@@ -557,9 +577,22 @@ export default function PanelMayoristaPage() {
 
       {/* Status badges */}
       <div className="panel-status-bar">
-        <div className={`status-badge ${subscription.status === "active" ? "status-active" : "status-inactive"}`}>
-          <span className="status-icon">{subscription.status === "active" ? "✓" : "○"}</span>
-          <span>Suscripción {subscription.status === "active" ? "Activa" : "Inactiva"}</span>
+        <div className={`status-badge ${
+          subscription.status === "active" && !subscription.cancel_at_period_end ? "status-active" : 
+          subscription.status === "paused" ? "status-warning" : 
+          "status-inactive"
+        }`}>
+          <span className="status-icon">
+            {subscription.status === "active" && !subscription.cancel_at_period_end ? "✓" : 
+             subscription.status === "paused" ? "⏸" : "○"}
+          </span>
+          <span>
+            {subscription.status === "active" && !subscription.cancel_at_period_end ? "Suscripción Activa" :
+             subscription.status === "active" && subscription.cancel_at_period_end ? "Suscripción Activa" :
+             subscription.status === "paused" ? "Suscripción Pausada" :
+             subscription.status === "canceled" ? "Suscripción: No activa" :
+             "Suscripción: No activa"}
+          </span>
         </div>
         <div className={`status-badge ${crmBasic.status === "active" ? "status-active" : "status-inactive"}`}>
           <span className="status-icon">{crmBasic.status === "active" ? "✓" : "○"}</span>
@@ -610,7 +643,72 @@ export default function PanelMayoristaPage() {
       )}
       <div className="panel-action-cards" style={{ position: 'relative', zIndex: expandedAccordions.length > 0 ? 11 : 'auto' }}>
         <div className="action-card">
-          {subscription.status === "active" ? (
+          {subscription.status === "active" && subscription.cancel_at_period_end ? (
+            <>
+              <div className="action-card-icon" style={{ backgroundColor: '#f59e0b' }}>⏳</div>
+              <h3 className="action-card-title">Suscripción Programada para Cancelar</h3>
+              
+              {/* Subscription details grid */}
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: '1fr 1fr',
+                gap: '12px',
+                margin: '16px 0',
+                padding: '12px',
+                backgroundColor: '#fef3c7',
+                borderRadius: '8px',
+                border: '1px solid #fcd34d'
+              }}>
+                <div>
+                  <p style={{ margin: 0, fontSize: '0.85rem', color: '#6b7280' }}>Plan activo</p>
+                  <p style={{ margin: '4px 0 0 0', fontSize: '1rem', fontWeight: '600', color: '#92400e' }}>
+                    {subscription.billing_cycle === 'monthly' ? 'Mensual' :
+                     subscription.billing_cycle === 'quarterly' ? '3 Meses' :
+                     subscription.billing_cycle === 'semiannual' ? 'Semestral' : 'Activo'}
+                  </p>
+                </div>
+                <div>
+                  <p style={{ margin: 0, fontSize: '0.85rem', color: '#6b7280' }}>Descuento</p>
+                  <p style={{ margin: '4px 0 0 0', fontSize: '1rem', fontWeight: '600', color: '#92400e' }}>20% Off</p>
+                </div>
+                <div style={{ gridColumn: '1 / -1' }}>
+                  <p style={{ margin: 0, fontSize: '0.85rem', color: '#6b7280' }}>Se cancelará el</p>
+                  <p style={{ margin: '4px 0 0 0', fontSize: '1rem', fontWeight: '600', color: '#dc2626' }}>
+                    📅 {new Date(subscription.current_period_end || "").toLocaleDateString("es-ES", { day: "numeric", month: "long", year: "numeric" })}
+                  </p>
+                </div>
+              </div>
+
+              {/* Info section */}
+              <div style={{
+                padding: '12px',
+                backgroundColor: '#fef3c7',
+                borderRadius: '6px',
+                marginBottom: '12px',
+                fontSize: '0.85rem',
+                color: '#92400e',
+                lineHeight: '1.5',
+                border: '1px solid #fcd34d'
+              }}>
+                <p style={{ margin: 0, fontWeight: '600' }}>
+                  ⏳ Suscripción activa hasta {new Date(subscription.current_period_end || "").toLocaleDateString("es-ES")}
+                </p>
+                <p style={{ margin: '6px 0 0 0' }}>
+                  ✅ Seguirás disfrutando del <strong>20% descuento</strong> hasta esa fecha
+                </p>
+                <p style={{ margin: '6px 0 0 0' }}>
+                  ❌ No se renovará automáticamente después
+                </p>
+              </div>
+
+              <button className="btn-secondary-full" onClick={handleRevertCancellation}>
+                ✅ Continuar con la Suscripción
+              </button>
+              <p style={{ fontSize: '0.75rem', color: '#9ca3af', margin: '8px 0 0 0', textAlign: 'center' }}>
+                Podrás reactivarla automáticamente después
+              </p>
+            </>
+          ) : subscription.status === "active" ? (
             <>
               <div className="action-card-icon active">✓</div>
               <h3 className="action-card-title">Suscripción Preferencial Activa</h3>
@@ -706,50 +804,50 @@ export default function PanelMayoristaPage() {
               <div className="action-card-icon">🎯</div>
               <h3 className="action-card-title">Suscripción Preferencial</h3>
               <p className="action-card-desc">Obtén descuentos automáticos en todos los productos streaming.</p>
-              <div className="discount-badge">📊 Obtén 20% descuento en Streaming</div>
+              <div className="discount-badge">📊 Obtén 20% descuento en Streaming + CRM PLUS GRATIS</div>
               <button className="btn-primary-full" onClick={() => toggleAccordion("subscription")}>
                 {expandedAccordions.includes("subscription") ? "Ocultar" : "Más información"} {expandedAccordions.includes("subscription") ? "▼" : "▶"}
               </button>
-              <p className="action-card-note">Desde $7.96/mes con plan semestral</p>
+              <p className="action-card-note">Desde $10.32/mes con plan semestral</p>
               
               {expandedAccordions.includes("subscription") && (
                 <div style={{ marginTop: "20px", paddingTop: "20px", borderTop: "1px solid #e5e7eb" }}>
                   <h3 className="sub-pay-title">Elige tu plan</h3>
                   <div className="sub-paygrid">
-                    <div className={`card sub-card${selectedPlan === "monthly" ? " selected" : ""}`} onClick={() => handleSelectPlan("monthly", 9.95)}>
+                    <div className={`card sub-card${selectedPlan === "monthly" ? " selected" : ""}`} onClick={() => handleSelectPlan("monthly", 12.95)}>
                       <div className="sub-card-row">
                         <div>
                           <h3 className="sub-card-title">Mensual</h3>
-                          <p className="muted sub-card-desc">Pago mes a mes, sin compromiso</p>
+                          <p className="muted sub-card-desc">Incluye CRM PLUS gratis</p>
                         </div>
                         <div className="sub-card-right">
-                          <div className="sub-card-price">$9.95</div>
+                          <div className="sub-card-price">$12.95</div>
                           <div className="muted sub-card-mes">/mes</div>
                         </div>
                       </div>
                     </div>
-                    <div className={`card sub-card${selectedPlan === "quarterly" ? " selected" : ""}`} onClick={() => handleSelectPlan("quarterly", 26.87)}>
+                    <div className={`card sub-card${selectedPlan === "quarterly" ? " selected" : ""}`} onClick={() => handleSelectPlan("quarterly", 34.86)}>
                       <div className="sub-card-row">
                         <div>
                           <h3 className="sub-card-title">3 Meses <span className="sub-card-badge">-10%</span></h3>
-                          <p className="muted sub-card-desc">Ahorra $2.98 • $8.96/mes</p>
+                          <p className="muted sub-card-desc">Ahorra $3.88 • $11.62/mes</p>
                         </div>
                         <div className="sub-card-right">
-                          <div className="sub-card-price">$26.87</div>
-                          <div className="muted sub-card-mes sub-card-old">$29.85</div>
+                          <div className="sub-card-price">$34.86</div>
+                          <div className="muted sub-card-mes sub-card-old">$38.85</div>
                         </div>
                       </div>
                     </div>
-                    <div className={`card sub-card${selectedPlan === "semiannual" ? " selected" : ""}`} onClick={() => handleSelectPlan("semiannual", 47.76)}>
+                    <div className={`card sub-card${selectedPlan === "semiannual" ? " selected" : ""}`} onClick={() => handleSelectPlan("semiannual", 61.92)}>
                       <div className="sub-card-best">Mejor valor</div>
                       <div className="sub-card-row">
                         <div>
                           <h3 className="sub-card-title">6 Meses <span className="sub-card-badge">-20%</span></h3>
-                          <p className="muted sub-card-desc">Ahorra $11.94 • $7.96/mes</p>
+                          <p className="muted sub-card-desc">Ahorra $15.48 • $10.32/mes</p>
                         </div>
                         <div className="sub-card-right">
-                          <div className="sub-card-price">$47.76</div>
-                          <div className="muted sub-card-mes sub-card-old">$59.70</div>
+                          <div className="sub-card-price">$61.92</div>
+                          <div className="muted sub-card-mes sub-card-old">$77.70</div>
                         </div>
                       </div>
                     </div>
@@ -763,67 +861,36 @@ export default function PanelMayoristaPage() {
                         return;
                       }
                       
-                      // Si tiene checkbox de CRM PLUS marcado, enviar ambos productos
-                      if (addCRMPlusUpsell) {
-                        openPayment({
-                          service: 'Suscripción Preferencial + CRM PLUS',
-                          plan: (selectedPlan === 'monthly' ? 'Mensual' : selectedPlan === 'quarterly' ? '3 Meses' : '6 Meses') + ' (Ambos)',
-                          price: selectedAmount + 7.50,
-                          productCode: 'subscription-pref,crm-basic',
-                          isRenewal: false,
-                          isSubscription: true,
-                          subscriptionType: 'subscription-pref',
-                          billingCycle: selectedPlan === 'monthly' ? 'monthly' : selectedPlan === 'quarterly' ? 'quarterly' : 'semiannual'
-                        });
-                      } else {
-                        openPayment({
-                          service: 'Suscripción Preferencial',
-                          plan: selectedPlan === 'monthly' ? 'Mensual' : selectedPlan === 'quarterly' ? '3 Meses' : '6 Meses',
-                          price: selectedAmount,
-                          productCode: 'subscription-pref',
-                          isRenewal: false,
-                          isSubscription: true,
-                          subscriptionType: 'subscription-pref',
-                          billingCycle: selectedPlan === 'monthly' ? 'monthly' : selectedPlan === 'quarterly' ? 'quarterly' : 'semiannual'
-                        });
-                      }
+                      openPayment({
+                        service: 'Suscripción Preferencial + CRM PLUS',
+                        plan: selectedPlan === 'monthly' ? 'Mensual' : selectedPlan === 'quarterly' ? '3 Meses' : '6 Meses',
+                        price: selectedAmount,
+                        productCode: 'subscription-pref,crm-basic',
+                        isRenewal: false,
+                        isSubscription: true,
+                        subscriptionType: 'subscription-pref',
+                        billingCycle: selectedPlan === 'monthly' ? 'monthly' : selectedPlan === 'quarterly' ? 'quarterly' : 'semiannual'
+                      });
                     }}
                     style={{ width: '100%', marginTop: '20px' }}
                   >
-                    Continuar al Pago {addCRMPlusUpsell ? `→ $${(selectedAmount + 7.50).toFixed(2)}` : '→'}
+                    Continuar al Pago →
                   </button>
 
-                  {selectedPlan && (
-                    <div style={{ 
-                      marginTop: '20px', 
-                      padding: '15px', 
-                      backgroundColor: '#f0f9ff', 
-                      border: '2px solid #0ea5e9',
-                      borderRadius: '8px'
-                    }}>
-                      <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer', gap: '12px' }}>
-                        <input
-                          type="checkbox"
-                          checked={addCRMPlusUpsell}
-                          onChange={(e) => setAddCRMPlusUpsell(e.target.checked)}
-                          style={{
-                            width: '20px',
-                            height: '20px',
-                            cursor: 'pointer',
-                            accentColor: '#0ea5e9'
-                          }}
-                        />
-                        <div>
-                          <p style={{ fontSize: '14px', color: '#0369a1', margin: 0, fontWeight: 'bold' }}>
-                            💡 Agregar CRM PLUS
-                          </p>
-                          <p style={{ fontSize: '12px', color: '#0c4a6e', margin: '4px 0 0 0' }}>
-                            Gestiona a tus clientes con herramientas profesionales (+$7.50/mes)
-                          </p>
-                        </div>
-                      </label>
-                    </div>
-                  )}
+                  <div style={{ 
+                    marginTop: '20px', 
+                    padding: '15px', 
+                    backgroundColor: '#f0fdf4', 
+                    border: '2px solid #10b981',
+                    borderRadius: '8px'
+                  }}>
+                    <p style={{ fontSize: '14px', color: '#065f46', margin: 0, fontWeight: 'bold' }}>
+                      ✅ CRM PLUS incluido
+                    </p>
+                    <p style={{ fontSize: '12px', color: '#047857', margin: '4px 0 0 0' }}>
+                      Gestión de clientes + Control de vencimientos gratis en tu suscripción
+                    </p>
+                  </div>
                 </div>
               )}
             </>
@@ -836,32 +903,49 @@ export default function PanelMayoristaPage() {
           <div className="discount-badges-row">
             <div className="discount-badge">⭐ CRM PRO: Obtén 25% descuento</div>
           </div>
-          <button className="btn-blue-full" onClick={() => toggleAccordion("crm")}>
-            {expandedAccordions.includes("crm") ? "Ocultar" : "Más información"} {expandedAccordions.includes("crm") ? "▼" : "▶"}
-          </button>
-          <p className="action-card-note">Desde $7.50/mes con plan preferencial</p>
+          
+          {(crmBasic.status === "active" || crmPro.status === "active") ? (
+            <>
+              <button 
+                className="btn-blue-full" 
+                onClick={() => router.push("/crm")}
+              >
+                🚀 Ir a mi CRM {crmPro.status === "active" ? "PRO" : "PLUS"}
+              </button>
+              <button 
+                className="btn btn-secondary" 
+                onClick={() => toggleAccordion("crm")}
+                style={{ width: '100%', marginTop: '8px' }}
+              >
+                {expandedAccordions.includes("crm") ? "Ocultar opciones" : "Más opciones"} {expandedAccordions.includes("crm") ? "▼" : "▶"}
+              </button>
+            </>
+          ) : (
+            <button className="btn-blue-full" onClick={() => toggleAccordion("crm")}>
+              {expandedAccordions.includes("crm") ? "Ocultar" : "Más información"} {expandedAccordions.includes("crm") ? "▼" : "▶"}
+            </button>
+          )}
+          <p className="action-card-note">Desde $9.95/mes CRM PLUS</p>
           
           {expandedAccordions.includes("crm") && (
             <div style={{ marginTop: "20px", paddingTop: "20px", borderTop: "1px solid #e5e7eb" }}>
               <div className="sub-paygrid">
-                <div className={`card sub-card${selectedCRMPlan === "crm-basic-monthly" ? " selected" : ""}`} onClick={() => handleSelectCRMPlan("crm-basic-monthly", subscription.status === "active" ? 7.50 : 12.50)}>
+                <div className={`card sub-card${selectedCRMPlan === "crm-basic-monthly" ? " selected" : ""}`} onClick={() => handleSelectCRMPlan("crm-basic-monthly", 9.95)}>
                   <div className="sub-card-row">
                     <div>
                       <h3 className="sub-card-title">CRM PLUS</h3>
                       <p className="muted sub-card-desc">Historial de clientes + Control de Vencimientos + Notas</p>
                     </div>
                     <div className="sub-card-right">
-                      <div className="sub-card-price">
-                        {subscription.status === "active" ? "$7.50" : "$12.50"}
-                      </div>
+                      <div className="sub-card-price">$9.95</div>
                       <div className="muted sub-card-mes">/mes</div>
                     </div>
                   </div>
                 </div>
               </div>
-              {subscription.status !== "active" && (
-                <p className="muted" style={{ fontSize: '12px', marginTop: '12px', marginBottom: '15px', color: '#666', padding: '10px', backgroundColor: '#fffbeb', borderRadius: '6px', border: '1px solid #fcd34d' }}>
-                  💡 <strong>Promoción:</strong> Activa tu Suscripción Preferencial y Obtendrás CRM PLUS por solo <strong>$7.50/mes</strong>
+              {subscription.status === "active" && (
+                <p className="muted" style={{ fontSize: '12px', marginTop: '12px', marginBottom: '15px', color: '#666', padding: '10px', backgroundColor: '#f0fdf4', borderRadius: '6px', border: '1px solid #86efac' }}>
+                  💡 <strong>Ya incluido:</strong> Tu Suscripción Preferencial ya tiene CRM PLUS incluido gratis
                 </p>
               )}
 
@@ -871,7 +955,7 @@ export default function PanelMayoristaPage() {
                   <div className="sub-card-row">
                     <div>
                       <h3 className="sub-card-title">CRM PRO</h3>
-                      <p className="muted sub-card-desc"> Todo lo de Basic + 25% Descuento Streaming + Recordatorios Automáticos SMS/Email + Analytics</p>
+                      <p className="muted sub-card-desc">Todo lo de PLUS + 25% Descuento Streaming + Recordatorios Automáticos SMS/Email + Analytics</p>
                     </div>
                     <div className="sub-card-right">
                       <div className="sub-card-price">$24.95</div>
@@ -894,17 +978,21 @@ export default function PanelMayoristaPage() {
                   }
                   
                   let crmType = '';
+                  let productCode = '';
+                  
                   if (selectedCRMPlan === 'crm-basic-monthly') {
-                    crmType = 'CRM BASIC';
+                    crmType = 'CRM PLUS';
+                    productCode = 'crm-basic';
                   } else {
                     crmType = 'CRM PRO';
+                    productCode = 'crm-pro';
                   }
                   
                   openPayment({
                     service: crmType,
                     plan: 'Mensual',
                     price: selectedCRMAmount,
-                    productCode: selectedCRMPlan === 'crm-basic-monthly' ? 'crm-basic' : 'crm-pro',
+                    productCode: productCode,
                     isRenewal: false
                   });
                 }}
@@ -1224,6 +1312,12 @@ export default function PanelMayoristaPage() {
         />
       )}
 
+      {/* Toast */}
+      {toastMsg && (
+        <div className={`toast${toastOk ? " ok" : " err"}`}>{toastMsg}</div>
+      )}
+      </main>
+
       {/* Modal de opciones de cancelación */}
       <CancelSubscriptionModal
         isOpen={showCancelModal}
@@ -1237,13 +1331,11 @@ export default function PanelMayoristaPage() {
             ? Math.ceil((new Date(subscription.current_period_end).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24))
             : undefined
         }
+        subscriptionType="preferential"
+        subscriptionName="Suscripción Preferencial"
+        benefitDescription="descuento del 20%"
+        discountPercent={20}
       />
-
-        {/* Toast */}
-        {toastMsg && (
-          <div className={`toast${toastOk ? " ok" : " err"}`}>{toastMsg}</div>
-        )}
-      </main>
 
       {/* Animaciones para servicios nuevos */}
       <style jsx>{`

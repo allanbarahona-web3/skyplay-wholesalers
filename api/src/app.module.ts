@@ -7,6 +7,7 @@ import { ServicesModule } from './modules/services/services.module';
 import { SubscriptionsModule } from './modules/subscriptions/subscriptions.module';
 import { AdminModule } from './modules/admin/admin.module';
 import { EmailModule } from './modules/email/email.module';
+import { CRMModule } from './modules/crm/crm.module';
 
 
 @Module({
@@ -19,6 +20,7 @@ import { EmailModule } from './modules/email/email.module';
   SubscriptionsModule,
   AdminModule,
   EmailModule,
+  CRMModule,
   ],
 })
 export class AppModule {}

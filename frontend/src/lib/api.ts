@@ -214,6 +214,12 @@ export async function cancelSubscriptionImmediately(): Promise<ApiResponse<any>>
   });
 }
 
+export async function revertSubscriptionCancellation(): Promise<ApiResponse<any>> {
+  return apiFetch('/subscriptions/revert-cancellation', {
+    method: 'POST',
+  });
+}
+
 export async function createSubscriptionCheckout(data: {
   subscriptionType: string;
   billingCycle: string;

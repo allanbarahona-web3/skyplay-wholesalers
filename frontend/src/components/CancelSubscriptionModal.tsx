@@ -9,6 +9,11 @@ interface CancelSubscriptionModalProps {
   onCancelNow: () => void;
   subscriptionEndDate?: string;
   remainingDays?: number;
+  // Props genéricos para cualquier tipo de suscripción
+  subscriptionType?: 'preferential' | 'crm-basic' | 'crm-pro' | 'tienda';
+  subscriptionName?: string;
+  benefitDescription?: string;
+  discountPercent?: number;
 }
 
 export default function CancelSubscriptionModal({
@@ -18,7 +23,11 @@ export default function CancelSubscriptionModal({
   onCancelAtEnd,
   onCancelNow,
   subscriptionEndDate,
-  remainingDays
+  remainingDays,
+  subscriptionType = 'preferential',
+  subscriptionName = 'Suscripción Preferencial',
+  benefitDescription = 'descuento del 20%',
+  discountPercent = 20
 }: CancelSubscriptionModalProps) {
   if (!isOpen) return null;
 
@@ -74,14 +83,14 @@ export default function CancelSubscriptionModal({
             fontWeight: '700',
             color: '#111827'
           }}>
-            Opciones de Cancelación
+            Opciones de Cancelación - {subscriptionName}
           </h2>
           <p style={{
             margin: '8px 0 0 0',
             color: '#6b7280',
             fontSize: '0.95rem'
           }}>
-            Elige cómo deseas proceder con tu suscripción
+            Elige cómo deseas proceder con tu {subscriptionName.toLowerCase()}
           </p>
         </div>
 
@@ -133,9 +142,9 @@ export default function CancelSubscriptionModal({
                     <li>Puedes reactivar en cualquier momento</li>
                     <li>No se te cobra mientras esté pausada</li>
                   </ul>
-                  <p style={{ margin: '12px 0 6px 0', color: '#dc2626', fontWeight: '500' }}>❌ Desventajas:</p>
+                  <p style={{ margin: '0 0 6px 0', color: '#dc2626', fontWeight: '500' }}>❌ Desventajas:</p>
                   <ul style={{ margin: '0', paddingLeft: '20px', color: '#6b7280' }}>
-                    <li>Pierdes el descuento del 20% inmediatamente</li>
+                    <li>Pierdes el {benefitDescription} inmediatamente</li>
                   </ul>
                 </div>
               </div>
@@ -183,7 +192,7 @@ export default function CancelSubscriptionModal({
                 }}>
                   <p style={{ margin: '0 0 6px 0', color: '#059669', fontWeight: '500' }}>✅ Ventajas:</p>
                   <ul style={{ margin: '0', paddingLeft: '20px', color: '#6b7280' }}>
-                    <li>Mantienes el 20% de descuento hasta {endDate}</li>
+                    <li>Mantienes el {benefitDescription} hasta {endDate}</li>
                     <li>Aprovechas lo que pagaste</li>
                     <li>No se renueva automáticamente</li>
                   </ul>
@@ -237,7 +246,7 @@ export default function CancelSubscriptionModal({
                 }}>
                   <p style={{ margin: '0 0 6px 0', color: '#dc2626', fontWeight: '500' }}>⚠️ Advertencia:</p>
                   <ul style={{ margin: '0', paddingLeft: '20px', color: '#6b7280' }}>
-                    <li>Pierdes el descuento del 20% inmediatamente</li>
+                    <li>Pierdes el {benefitDescription} inmediatamente</li>
                     <li>Pierdes los {remainingDays || '~'} días restantes que pagaste</li>
                     <li>No hay reembolso por el tiempo no utilizado</li>
                   </ul>

@@ -78,7 +78,10 @@ export class ServicesController {
       );
 
       const hasActiveSubscription = subResult.rows.length > 0;
-      const discount = hasActiveSubscription ? 0.20 : 0; // 20% descuento por Suscripción Preferencial // 30% descuento si tiene suscripción
+      // Aplicar descuento SOLO a categorías Streaming e IPTV
+      const eligibleCategories = ['Streaming', 'IPTV'];
+      const isEligibleCategory = eligibleCategories.includes(product.category);
+      const discount = (hasActiveSubscription && isEligibleCategory) ? 0.20 : 0;
       const catalogPrice = parseFloat(product.price);
       const unitPrice = catalogPrice * (1 - discount); // Precio con descuento aplicado
       const totalPrice = unitPrice * quantity;
@@ -277,7 +280,10 @@ export class ServicesController {
       );
 
       const hasActiveSubscription = subResult.rows.length > 0;
-      const discount = hasActiveSubscription ? 0.20 : 0; // 20% descuento por Suscripción Preferencial
+      // Aplicar descuento SOLO a categorías Streaming e IPTV
+      const eligibleCategories = ['Streaming', 'IPTV'];
+      const isEligibleCategory = eligibleCategories.includes(product.category);
+      const discount = (hasActiveSubscription && isEligibleCategory) ? 0.20 : 0;
       const catalogPrice = parseFloat(product.price);
       const unitPrice = catalogPrice * (1 - discount); // Precio con descuento aplicado
       const totalPrice = unitPrice * quantity;
@@ -505,7 +511,10 @@ export class ServicesController {
       );
 
       const hasActiveSubscription = subResult.rows.length > 0;
-      const discount = hasActiveSubscription ? 0.20 : 0; // 20% descuento por Suscripción Preferencial
+      // Aplicar descuento SOLO a categorías Streaming e IPTV
+      const eligibleCategories = ['Streaming', 'IPTV'];
+      const isEligibleCategory = eligibleCategories.includes(product.category);
+      const discount = (hasActiveSubscription && isEligibleCategory) ? 0.20 : 0;
       const catalogPrice = parseFloat(product.price);
       const unitPrice = catalogPrice * (1 - discount); // Precio con descuento aplicado
       const totalPrice = unitPrice * quantity;
@@ -865,14 +874,15 @@ async renewFromWallet(@Param('id') serviceId: string, @Req() req: Request, @Res(
       throw new HttpException('Service not found', 404);
     }
 
-    // 2. Obtener precio del producto
-    const priceQ = `SELECT price FROM products WHERE code = $1`;
+    // 2. Obtener precio y categoría del producto
+    const priceQ = `SELECT price, category FROM products WHERE code = $1`;
     const { rows: priceRows } = await client.query(priceQ, [service.product_code]);
     if (priceRows.length === 0) {
       await client.query('ROLLBACK');
       throw new HttpException('Product not found', 404);
     }
     service.price = priceRows[0].price;
+    const productCategory = priceRows[0].category;
 
     // 3. Verificar suscripción para descuento
     const subQ = `SELECT status, current_period_end FROM subscriptions 
@@ -888,7 +898,10 @@ async renewFromWallet(@Param('id') serviceId: string, @Req() req: Request, @Res(
     }
 
     const originalPrice = parseFloat(service.price);
-    const discount = hasActiveSubscription ? 0.20 : 0; // 20% descuento por Suscripción Preferencial
+    // Aplicar descuento SOLO a categorías Streaming e IPTV
+    const eligibleCategories = ['Streaming', 'IPTV'];
+    const isEligibleCategory = eligibleCategories.includes(productCategory);
+    const discount = (hasActiveSubscription && isEligibleCategory) ? 0.20 : 0;
     const finalPrice = originalPrice * (1 - discount);
 
     // 4. Obtener balance del tenant

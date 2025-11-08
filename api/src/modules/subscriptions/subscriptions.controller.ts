@@ -529,7 +529,7 @@ export class SubscriptionsController {
     try {
       // Obtener suscripción actual
       const subResult = await this.pg.query(
-        `SELECT stripe_subscription_id, current_period_end, status 
+        `SELECT stripe_subscription_id, current_period_end, status, provider 
          FROM subscriptions 
          WHERE tenant_id = $1 AND status = 'active'`,
         [tenant_id]
@@ -539,32 +539,34 @@ export class SubscriptionsController {
         throw new HttpException('No active subscription found', 404);
       }
 
-      const { stripe_subscription_id, current_period_end } = subResult.rows[0];
+      const { stripe_subscription_id, current_period_end, provider } = subResult.rows[0];
 
       // Calcular días restantes
       const now = new Date();
       const endDate = new Date(current_period_end);
       const remainingDays = Math.ceil((endDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
 
-      // Pausar en Stripe/PayPal si es suscripción automática
-      if (stripe_subscription_id && stripe_subscription_id.startsWith('sub_')) {
-        // Es de Stripe - pausar
-        await this.stripe.subscriptions.update(stripe_subscription_id, {
-          pause_collection: { behavior: 'void' }
-        });
-      } else if (stripe_subscription_id && stripe_subscription_id.startsWith('I-')) {
-        // Es de PayPal - suspender
-        const accessToken = await this.getPayPalAccessToken();
-        await fetch(`https://api-m.paypal.com/v1/billing/subscriptions/${stripe_subscription_id}/suspend`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${accessToken}`
-          },
-          body: JSON.stringify({
-            reason: 'User requested pause'
-          })
-        });
+      // Solo pausar en Stripe/PayPal si NO es manual
+      if (provider !== 'manual') {
+        if (stripe_subscription_id && stripe_subscription_id.startsWith('sub_')) {
+          // Es de Stripe - pausar
+          await this.stripe.subscriptions.update(stripe_subscription_id, {
+            pause_collection: { behavior: 'void' }
+          });
+        } else if (stripe_subscription_id && stripe_subscription_id.startsWith('I-')) {
+          // Es de PayPal - suspender
+          const accessToken = await this.getPayPalAccessToken();
+          await fetch(`https://api-m.paypal.com/v1/billing/subscriptions/${stripe_subscription_id}/suspend`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${accessToken}`
+            },
+            body: JSON.stringify({
+              reason: 'User requested pause'
+            })
+          });
+        }
       }
 
       // Actualizar en DB
@@ -597,7 +599,7 @@ export class SubscriptionsController {
     try {
       // Obtener suscripción pausada
       const subResult = await this.pg.query(
-        `SELECT stripe_subscription_id, remaining_days, status 
+        `SELECT stripe_subscription_id, remaining_days, status, provider 
          FROM subscriptions 
          WHERE tenant_id = $1 AND status = 'paused'`,
         [tenant_id]
@@ -607,31 +609,33 @@ export class SubscriptionsController {
         throw new HttpException('No paused subscription found', 404);
       }
 
-      const { stripe_subscription_id, remaining_days } = subResult.rows[0];
+      const { stripe_subscription_id, remaining_days, provider } = subResult.rows[0];
 
       // Calcular nueva fecha de expiración
       const newEndDate = new Date();
       newEndDate.setDate(newEndDate.getDate() + (remaining_days || 0));
 
-      // Reactivar en Stripe/PayPal si es suscripción automática
-      if (stripe_subscription_id && stripe_subscription_id.startsWith('sub_')) {
-        // Es de Stripe - reactivar
-        await this.stripe.subscriptions.update(stripe_subscription_id, {
-          pause_collection: null as any
-        });
-      } else if (stripe_subscription_id && stripe_subscription_id.startsWith('I-')) {
-        // Es de PayPal - activar
-        const accessToken = await this.getPayPalAccessToken();
-        await fetch(`https://api-m.paypal.com/v1/billing/subscriptions/${stripe_subscription_id}/activate`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${accessToken}`
-          },
-          body: JSON.stringify({
-            reason: 'User resumed subscription'
-          })
-        });
+      // Solo reactivar en Stripe/PayPal si NO es manual
+      if (provider !== 'manual') {
+        if (stripe_subscription_id && stripe_subscription_id.startsWith('sub_')) {
+          // Es de Stripe - reactivar
+          await this.stripe.subscriptions.update(stripe_subscription_id, {
+            pause_collection: null as any
+          });
+        } else if (stripe_subscription_id && stripe_subscription_id.startsWith('I-')) {
+          // Es de PayPal - activar
+          const accessToken = await this.getPayPalAccessToken();
+          await fetch(`https://api-m.paypal.com/v1/billing/subscriptions/${stripe_subscription_id}/activate`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${accessToken}`
+            },
+            body: JSON.stringify({
+              reason: 'User resumed subscription'
+            })
+          });
+        }
       }
 
       // Actualizar en DB
@@ -664,7 +668,7 @@ export class SubscriptionsController {
     try {
       // Obtener suscripción actual
       const subResult = await this.pg.query(
-        `SELECT stripe_subscription_id, current_period_end, status 
+        `SELECT stripe_subscription_id, current_period_end, status, provider 
          FROM subscriptions 
          WHERE tenant_id = $1 AND status = 'active'`,
         [tenant_id]
@@ -674,27 +678,29 @@ export class SubscriptionsController {
         throw new HttpException('No active subscription found', 404);
       }
 
-      const { stripe_subscription_id, current_period_end } = subResult.rows[0];
+      const { stripe_subscription_id, current_period_end, provider } = subResult.rows[0];
 
-      // Cancelar al final del período en Stripe/PayPal
-      if (stripe_subscription_id && stripe_subscription_id.startsWith('sub_')) {
-        // Es de Stripe
-        await this.stripe.subscriptions.update(stripe_subscription_id, {
-          cancel_at_period_end: true
-        });
-      } else if (stripe_subscription_id && stripe_subscription_id.startsWith('I-')) {
-        // Es de PayPal - cancelar
-        const accessToken = await this.getPayPalAccessToken();
-        await fetch(`https://api-m.paypal.com/v1/billing/subscriptions/${stripe_subscription_id}/cancel`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${accessToken}`
-          },
-          body: JSON.stringify({
-            reason: 'User requested cancellation at period end'
-          })
-        });
+      // Solo cancelar en Stripe/PayPal si NO es manual
+      if (provider !== 'manual') {
+        if (stripe_subscription_id && stripe_subscription_id.startsWith('sub_')) {
+          // Es de Stripe
+          await this.stripe.subscriptions.update(stripe_subscription_id, {
+            cancel_at_period_end: true
+          });
+        } else if (stripe_subscription_id && stripe_subscription_id.startsWith('I-')) {
+          // Es de PayPal - cancelar
+          const accessToken = await this.getPayPalAccessToken();
+          await fetch(`https://api-m.paypal.com/v1/billing/subscriptions/${stripe_subscription_id}/cancel`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${accessToken}`
+            },
+            body: JSON.stringify({
+              reason: 'User requested cancellation at period end'
+            })
+          });
+        }
       }
 
       // Actualizar en DB
@@ -724,7 +730,7 @@ export class SubscriptionsController {
     try {
       // Obtener suscripción actual
       const subResult = await this.pg.query(
-        `SELECT stripe_subscription_id, status 
+        `SELECT stripe_subscription_id, status, provider 
          FROM subscriptions 
          WHERE tenant_id = $1 AND (status = 'active' OR status = 'paused')`,
         [tenant_id]
@@ -734,25 +740,27 @@ export class SubscriptionsController {
         throw new HttpException('No subscription found', 404);
       }
 
-      const { stripe_subscription_id } = subResult.rows[0];
+      const { stripe_subscription_id, provider } = subResult.rows[0];
 
-      // Cancelar inmediatamente en Stripe/PayPal
-      if (stripe_subscription_id && stripe_subscription_id.startsWith('sub_')) {
-        // Es de Stripe - cancelar ahora
-        await this.stripe.subscriptions.cancel(stripe_subscription_id);
-      } else if (stripe_subscription_id && stripe_subscription_id.startsWith('I-')) {
-        // Es de PayPal - cancelar
-        const accessToken = await this.getPayPalAccessToken();
-        await fetch(`https://api-m.paypal.com/v1/billing/subscriptions/${stripe_subscription_id}/cancel`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${accessToken}`
-          },
-          body: JSON.stringify({
-            reason: 'User requested immediate cancellation'
-          })
-        });
+      // Solo cancelar en Stripe/PayPal si NO es manual
+      if (provider !== 'manual') {
+        if (stripe_subscription_id && stripe_subscription_id.startsWith('sub_')) {
+          // Es de Stripe - cancelar ahora
+          await this.stripe.subscriptions.cancel(stripe_subscription_id);
+        } else if (stripe_subscription_id && stripe_subscription_id.startsWith('I-')) {
+          // Es de PayPal - cancelar
+          const accessToken = await this.getPayPalAccessToken();
+          await fetch(`https://api-m.paypal.com/v1/billing/subscriptions/${stripe_subscription_id}/cancel`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${accessToken}`
+            },
+            body: JSON.stringify({
+              reason: 'User requested immediate cancellation'
+            })
+          });
+        }
       }
 
       // Actualizar en DB - marcar como cancelada inmediatamente
@@ -773,6 +781,30 @@ export class SubscriptionsController {
     } catch (err: any) {
       console.error('Error canceling immediately:', err);
       throw new HttpException(err.message || 'Error al cancelar inmediatamente', 500);
+    }
+  }
+
+  @Post('revert-cancellation')
+  async revertCancellation(@Req() req: Request, @Res() res: Response) {
+    const { tenant_id } = (req as any).user as JWTPayload;
+    if (!tenant_id) throw new HttpException('Unauthorized', 401);
+
+    try {
+      // Revertir la cancelación programada
+      await this.pg.query(
+        `UPDATE subscriptions 
+         SET cancel_at_period_end = false
+         WHERE tenant_id = $1`,
+        [tenant_id]
+      );
+
+      return res.json({
+        ok: true,
+        message: 'Cancelación revertida. Tu suscripción continuará renovándose automáticamente.'
+      });
+    } catch (err: any) {
+      console.error('Error reverting cancellation:', err);
+      throw new HttpException(err.message || 'Error al revertir cancelación', 500);
     }
   }
 

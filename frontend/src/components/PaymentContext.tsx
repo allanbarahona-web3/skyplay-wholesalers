@@ -53,15 +53,27 @@ export function PaymentProvider({ children }: { children: ReactNode }) {
       return;
     }
     
-    // Calcular descuento si el usuario tiene suscripción activa
+    // NO aplicar descuentos si se está comprando una suscripción
+    if (data.isSubscription) {
+      setPaymentData({
+        ...data,
+        originalPrice: data.price,
+        price: data.price,
+        discount: 0
+      });
+      setIsOpen(true);
+      return;
+    }
+    
+    // Calcular descuento si el usuario tiene suscripción activa (SOLO para productos del catálogo)
     let finalPrice = data.price;
     let discountApplied = 0;
     
     if (userSubscription && userSubscription.status === 'active' && userSubscription.current_period_end) {
       const endDate = new Date(userSubscription.current_period_end);
       if (endDate > new Date()) {
-        // Suscripción activa, verificar si es categoría IPTV o Streaming
-        // Por ahora, asumimos que es Netflix/Streaming y aplicamos 20% descuento
+        // Suscripción activa - el backend aplicará el descuento solo a Streaming/IPTV
+        // Aquí mostramos el descuento estimado (el backend validará la categoría)
         discountApplied = 0.20;
         finalPrice = data.price * (1 - discountApplied);
       }
