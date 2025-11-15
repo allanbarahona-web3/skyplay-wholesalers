@@ -5,7 +5,7 @@ import { usePayment } from "@/components/PaymentContext";
 import CredentialsModal from "@/components/CredentialsModal";
 import SuccessInfoModal from "@/components/SuccessInfoModal";
 import { getAllProducts, logout, getOverview } from "@/lib/api";
-import { groupProductsByService, createPriceMap, createProductCodeMap, getBrandColors, type CatalogService, type PriceMap, type ProductCodeMap } from "@/lib/catalog-utils";
+import { groupProductsByService, createPriceMap, createProductCodeMap, createCategoryMap, getBrandColors, type CatalogService, type PriceMap, type ProductCodeMap, type CategoryMap } from "@/lib/catalog-utils";
 
 export default function Home() {
   const [query, setQuery] = useState("");
@@ -14,6 +14,7 @@ export default function Home() {
   const [catalogData, setCatalogData] = useState<CatalogService[]>([]);
   const [priceMap, setPriceMap] = useState<PriceMap>({});
   const [productCodeMap, setProductCodeMap] = useState<ProductCodeMap>({});
+  const [categoryMap, setCategoryMap] = useState<CategoryMap>({});
   const [showCredentialsModal, setShowCredentialsModal] = useState(false);
   const [showSuccessInfoModal, setShowSuccessInfoModal] = useState(false);
   const [successProvider, setSuccessProvider] = useState<string>('');
@@ -26,7 +27,7 @@ export default function Home() {
     loadCatalog();
     refreshWallet();
     
-    // Detectar retorno desde Stripe/PayPal y refrescar saldo
+    // Detectar retorno desde Stripe/PayPal/Wallet y refrescar saldo
     const urlParams = new URLSearchParams(window.location.search);
     const paymentStatus = urlParams.get('payment');
     const provider = urlParams.get('provider');
@@ -43,9 +44,9 @@ export default function Home() {
         if (orderType === 'recharge') {
           alert('✅ ¡Recarga exitosa! Tu saldo ha sido actualizado.');
           window.history.replaceState({}, '', window.location.pathname);
-        } else if (orderType === 'purchase' && (provider === 'paypal' || provider === 'stripe')) {
-          // Mostrar modal informativo (sin esperar al webhook)
-          setSuccessProvider(provider || '');
+        } else if (orderType === 'purchase') {
+          // Mostrar modal de pago exitoso para TODOS los métodos (Stripe, PayPal, Wallet)
+          setSuccessProvider(provider || 'wallet');
           setShowSuccessInfoModal(true);
           window.history.replaceState({}, '', window.location.pathname);
         }
@@ -63,10 +64,12 @@ export default function Home() {
         const services = groupProductsByService(productsResult.data);
         const prices = createPriceMap(productsResult.data);
         const codes = createProductCodeMap(productsResult.data);
+        const categories = createCategoryMap(productsResult.data);
         console.log(`✅ Catálogo cargado: ${services.length} servicios, ${productsResult.data.length} productos`);
         setCatalogData(services);
         setPriceMap(prices);
         setProductCodeMap(codes);
+        setCategoryMap(categories);
       } else {
         console.error('❌ Error cargando catálogo:', productsResult);
       }
@@ -90,7 +93,7 @@ export default function Home() {
   };
 
   // Calcular precio con descuento si tiene suscripción activa
-  const calculatePrice = (basePrice: number) => {
+  const calculatePrice = (basePrice: number, category?: string) => {
     if (!subscription || subscription.status !== 'active') {
       return { price: basePrice, discount: 0, discounted: false };
     }
@@ -103,6 +106,12 @@ export default function Home() {
       }
     }
 
+    // Aplicar descuento SOLO a categorías Streaming e IPTV
+    const eligibleCategories = ['Streaming', 'IPTV'];
+    if (!category || !eligibleCategories.includes(category)) {
+      return { price: basePrice, discount: 0, discounted: false };
+    }
+
     // Aplicar 20% descuento
     const discount = 0.20;
     const discountedPrice = basePrice * (1 - discount);
@@ -111,13 +120,25 @@ export default function Home() {
 
   const handleBuy = (svc: string, plan: string) => {
     const key = `${svc}|${plan}`;
-    const price = priceMap[key] || 0;
+    const basePrice = priceMap[key] || 0;
     const productCode = productCodeMap[key];
+    const category = categoryMap[key];
     if (!productCode) {
       console.error('❌ Product code not found for:', key);
       return;
     }
-    openPayment({ service: svc, plan, price, productCode });
+    
+    // Calcular precio con descuento si aplica (verificando categoría)
+    const priceInfo = calculatePrice(basePrice, category);
+    
+    openPayment({ 
+      service: svc, 
+      plan, 
+      price: priceInfo.price, // Precio con descuento aplicado
+      productCode,
+      originalPrice: priceInfo.discounted ? basePrice : undefined,
+      discount: priceInfo.discounted ? priceInfo.discount : undefined
+    });
   };
 
   const filtered = catalogData.filter((svc) =>
@@ -260,8 +281,9 @@ export default function Home() {
                       {item.plans.map((plan) => {
                         const key = `${item.svc}|${plan}`;
                         const basePrice = priceMap[key];
+                        const category = categoryMap[key];
                         const stock = item.stockByPlan?.[plan] || 0;
-                        const priceInfo = calculatePrice(basePrice);
+                        const priceInfo = calculatePrice(basePrice, category);
                         
                         let cleanPlan = plan;
                         if (plan.includes('Mes')) {

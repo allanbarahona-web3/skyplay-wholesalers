@@ -41,7 +41,7 @@ export function PaymentProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const openPayment = (data: PaymentData) => {
-    // Si ya viene originalPrice y discount precalculado (ej: renovaciones), usarlos
+    // Si ya viene originalPrice y discount precalculado (ej: renovaciones o desde catálogo con validación de categoría), usarlos
     if (data.originalPrice !== undefined && data.discount !== undefined) {
       setPaymentData({
         ...data,
@@ -65,25 +65,13 @@ export function PaymentProvider({ children }: { children: ReactNode }) {
       return;
     }
     
-    // Calcular descuento si el usuario tiene suscripción activa (SOLO para productos del catálogo)
-    let finalPrice = data.price;
-    let discountApplied = 0;
-    
-    if (userSubscription && userSubscription.status === 'active' && userSubscription.current_period_end) {
-      const endDate = new Date(userSubscription.current_period_end);
-      if (endDate > new Date()) {
-        // Suscripción activa - el backend aplicará el descuento solo a Streaming/IPTV
-        // Aquí mostramos el descuento estimado (el backend validará la categoría)
-        discountApplied = 0.20;
-        finalPrice = data.price * (1 - discountApplied);
-      }
-    }
-    
+    // Fallback: Si no viene precalculado, usar el precio tal cual (sin descuento)
+    // Esto solo debería ocurrir en casos especiales
     setPaymentData({
       ...data,
       originalPrice: data.price,
-      price: finalPrice,
-      discount: discountApplied
+      price: data.price,
+      discount: 0
     });
     setIsOpen(true);
   };
@@ -161,17 +149,11 @@ export function PaymentProvider({ children }: { children: ReactNode }) {
           // Actualizar balance
           setWalletBalance(purchase.new_balance);
           
-          // Preparar datos para el modal de credenciales (compra normal)
-          setPurchasedServices(services);
-          setPurchaseDetails({
-            product_name: purchase.product_name,
-            total_price: purchase.total_price,
-            discount_applied: purchase.discount_applied
-          });
-          
-          // Cerrar modal de pago y mostrar modal de credenciales
+          // Cerrar modal de pago
           closePayment();
-          setShowCredentials(true);
+          
+          // Redirigir al catálogo con parámetros para mostrar modal de éxito
+          window.location.href = `/?payment=success&type=purchase&provider=wallet&order=WALLET-${Date.now()}`;
         } else {
           alert(`❌ Error: ${result.error || 'No se pudo procesar la compra'}`);
         }

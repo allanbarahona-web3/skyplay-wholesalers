@@ -107,7 +107,10 @@ export default function SuccessInfoModal({ isOpen, onClose, provider }: SuccessI
           margin: '0 0 24px 0',
           fontStyle: 'italic'
         }}>
-          {provider === 'paypal' ? 'Procesado con PayPal' : provider === 'stripe' ? 'Procesado con Stripe' : 'Pago procesado'}
+          {provider === 'paypal' ? 'Procesado con PayPal' : 
+           provider === 'stripe' ? 'Procesado con Stripe' : 
+           provider === 'wallet' ? 'Procesado con Billetera' : 
+           'Pago procesado'}
         </p>
 
         {/* Botones */}

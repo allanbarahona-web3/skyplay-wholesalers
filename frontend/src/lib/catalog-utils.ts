@@ -28,6 +28,10 @@ export interface ProductCodeMap {
   [key: string]: string; // key: "serviceName|planName" -> value: product_code
 }
 
+export interface CategoryMap {
+  [key: string]: string; // key: "serviceName|planName" -> value: category
+}
+
 /**
  * Extrae el nombre base del servicio desde el nombre del producto
  */
@@ -133,6 +137,22 @@ export function createProductCodeMap(products: Product[]): ProductCodeMap {
   });
 
   return codeMap;
+}
+
+/**
+ * Crea un mapa de categorías de producto
+ */
+export function createCategoryMap(products: Product[]): CategoryMap {
+  const categoryMap: CategoryMap = {};
+
+  products.forEach(product => {
+    const serviceName = extractServiceName(product.name);
+    const planName = extractPlanName(product.name, serviceName);
+    const key = `${serviceName}|${planName}`;
+    categoryMap[key] = product.category;
+  });
+
+  return categoryMap;
 }
 
 /**

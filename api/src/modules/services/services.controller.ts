@@ -70,18 +70,31 @@ export class ServicesController {
       }
 
       // 2. Verificar si tiene suscripción activa para aplicar descuento
+      // Obtener TODAS las suscripciones activas y seleccionar el descuento máximo
       const subResult = await client.query(
-        `SELECT status, current_period_end FROM subscriptions 
-         WHERE tenant_id = $1 AND current_period_end > NOW() 
-         ORDER BY current_period_end DESC LIMIT 1`,
+        `SELECT product_type, status, current_period_end FROM subscriptions 
+         WHERE tenant_id = $1 AND current_period_end > NOW()`,
         [tenant_id]
       );
 
-      const hasActiveSubscription = subResult.rows.length > 0;
+      // Mapeo de tipos de suscripción a descuentos
+      const discountMap: { [key: string]: number } = {
+        'preferential': 0.20,
+        'crm-pro': 0.25,
+        'crm_pro': 0.25,
+      };
+
+      // Calcular el descuento máximo (NO acumular)
+      let maxDiscount = 0;
+      for (const sub of subResult.rows) {
+        const discountForType = discountMap[sub.product_type] || 0;
+        maxDiscount = Math.max(maxDiscount, discountForType);
+      }
+
       // Aplicar descuento SOLO a categorías Streaming e IPTV
       const eligibleCategories = ['Streaming', 'IPTV'];
       const isEligibleCategory = eligibleCategories.includes(product.category);
-      const discount = (hasActiveSubscription && isEligibleCategory) ? 0.20 : 0;
+      const discount = (maxDiscount > 0 && isEligibleCategory) ? maxDiscount : 0;
       const catalogPrice = parseFloat(product.price);
       const unitPrice = catalogPrice * (1 - discount); // Precio con descuento aplicado
       const totalPrice = unitPrice * quantity;
@@ -130,12 +143,12 @@ export class ServicesController {
 
         const credential = credentialResult.rows[0];
         
-        // Crear el servicio
+        // Crear el servicio con el precio pagado (después de descuento)
         const serviceResult = await client.query(
-          `INSERT INTO services (tenant_id, product_code, credential_id, status, expires_at)
-           VALUES ($1, $2, $3, 'active', NOW() + INTERVAL '30 days')
+          `INSERT INTO services (tenant_id, product_code, credential_id, status, expires_at, paid_price)
+           VALUES ($1, $2, $3, 'active', NOW() + INTERVAL '30 days', $4)
            RETURNING id, product_code, credential_id, status, expires_at, created_at`,
-          [tenant_id, product_code, credential.id]
+          [tenant_id, product_code, credential.id, unitPrice]
         );
 
         const service = serviceResult.rows[0];
@@ -272,21 +285,47 @@ export class ServicesController {
       }
 
       // 2. Verificar si tiene suscripción activa para aplicar descuento
+      // Obtener TODAS las suscripciones activas y seleccionar el descuento máximo
       const subResult = await this.pg.query(
-        `SELECT status, current_period_end FROM subscriptions 
-         WHERE tenant_id = $1 AND current_period_end > NOW() 
-         ORDER BY current_period_end DESC LIMIT 1`,
+        `SELECT product_type, status, current_period_end FROM subscriptions 
+         WHERE tenant_id = $1 AND current_period_end > NOW()`,
         [tenant_id]
       );
 
-      const hasActiveSubscription = subResult.rows.length > 0;
+      // Mapeo de tipos de suscripción a descuentos
+      const discountMap: { [key: string]: number } = {
+        'preferential': 0.20,
+        'crm-pro': 0.25,
+        'crm_pro': 0.25,
+      };
+
+      // Calcular el descuento máximo (NO acumular)
+      let maxDiscount = 0;
+      for (const sub of subResult.rows) {
+        const discountForType = discountMap[sub.product_type] || 0;
+        maxDiscount = Math.max(maxDiscount, discountForType);
+      }
+
       // Aplicar descuento SOLO a categorías Streaming e IPTV
       const eligibleCategories = ['Streaming', 'IPTV'];
       const isEligibleCategory = eligibleCategories.includes(product.category);
-      const discount = (hasActiveSubscription && isEligibleCategory) ? 0.20 : 0;
+      const discount = (maxDiscount > 0 && isEligibleCategory) ? maxDiscount : 0;
       const catalogPrice = parseFloat(product.price);
       const unitPrice = catalogPrice * (1 - discount); // Precio con descuento aplicado
       const totalPrice = unitPrice * quantity;
+
+      console.log(`💰 Stripe Checkout - Price calculation:`, {
+        product: product.name,
+        catalogPrice,
+        discount,
+        discountPercent: Math.round(discount * 100),
+        unitPrice,
+        quantity,
+        totalPrice,
+        category: product.category,
+        isEligible: isEligibleCategory,
+        stripeAmount: Math.round(totalPrice * 100)
+      });
 
       // 3. Generar order number único
       const orderNumber = this.generateOrderNumber();
@@ -322,8 +361,8 @@ export class ServicesController {
             currency: 'usd',
             product_data: { 
               name: product.name,
-              description: hasActiveSubscription 
-                ? `${product.category} - Con descuento preferencial (-30%)`
+              description: discount > 0
+                ? `${product.category} - Con descuento (${Math.round(discount * 100)}%)`
                 : `${product.category} - Servicio digital`
             },
             unit_amount: Math.round(totalPrice * 100)
@@ -400,15 +439,31 @@ export class ServicesController {
       }
 
       // 2. Verificar suscripción para descuento
+      // Obtener TODAS las suscripciones activas y seleccionar el descuento máximo
       const subResult = await this.pg.query(
-        `SELECT status FROM subscriptions 
-         WHERE tenant_id = $1 AND current_period_end > NOW() 
-         ORDER BY current_period_end DESC LIMIT 1`,
+        `SELECT product_type, status FROM subscriptions 
+         WHERE tenant_id = $1 AND current_period_end > NOW()`,
         [tenant_id]
       );
 
-      const hasActiveSubscription = subResult.rows.length > 0;
-      const discount = hasActiveSubscription ? 0.20 : 0; // 20% descuento por Suscripción Preferencial
+      // Mapeo de tipos de suscripción a descuentos
+      const discountMap: { [key: string]: number } = {
+        'preferential': 0.20,
+        'crm-pro': 0.25,
+        'crm_pro': 0.25,
+      };
+
+      // Calcular el descuento máximo (NO acumular)
+      let maxDiscount = 0;
+      for (const sub of subResult.rows) {
+        const discountForType = discountMap[sub.product_type] || 0;
+        maxDiscount = Math.max(maxDiscount, discountForType);
+      }
+
+      // Aplicar descuento SOLO a categorías Streaming e IPTV
+      const eligibleCategories = ['Streaming', 'IPTV'];
+      const isEligibleCategory = eligibleCategories.includes(product.category);
+      const discount = (maxDiscount > 0 && isEligibleCategory) ? maxDiscount : 0;
       const catalogPrice = parseFloat(product.price);
       const unitPrice = catalogPrice * (1 - discount); // Precio con descuento aplicado
       const totalPrice = unitPrice * quantity;
@@ -503,18 +558,31 @@ export class ServicesController {
       }
 
       // 2. Verificar si tiene suscripción activa para aplicar descuento
+      // Obtener TODAS las suscripciones activas y seleccionar el descuento máximo
       const subResult = await this.pg.query(
-        `SELECT status, current_period_end FROM subscriptions 
-         WHERE tenant_id = $1 AND current_period_end > NOW() 
-         ORDER BY current_period_end DESC LIMIT 1`,
+        `SELECT product_type, status, current_period_end FROM subscriptions 
+         WHERE tenant_id = $1 AND current_period_end > NOW()`,
         [tenant_id]
       );
 
-      const hasActiveSubscription = subResult.rows.length > 0;
+      // Mapeo de tipos de suscripción a descuentos
+      const discountMap: { [key: string]: number } = {
+        'preferential': 0.20,
+        'crm-pro': 0.25,
+        'crm_pro': 0.25,
+      };
+
+      // Calcular el descuento máximo (NO acumular)
+      let maxDiscount = 0;
+      for (const sub of subResult.rows) {
+        const discountForType = discountMap[sub.product_type] || 0;
+        maxDiscount = Math.max(maxDiscount, discountForType);
+      }
+
       // Aplicar descuento SOLO a categorías Streaming e IPTV
       const eligibleCategories = ['Streaming', 'IPTV'];
       const isEligibleCategory = eligibleCategories.includes(product.category);
-      const discount = (hasActiveSubscription && isEligibleCategory) ? 0.20 : 0;
+      const discount = (maxDiscount > 0 && isEligibleCategory) ? maxDiscount : 0;
       const catalogPrice = parseFloat(product.price);
       const unitPrice = catalogPrice * (1 - discount); // Precio con descuento aplicado
       const totalPrice = unitPrice * quantity;
@@ -549,7 +617,7 @@ export class ServicesController {
       const paypalOrder = await this.paypalService.createOrder({
         amount: totalPrice,
         currency: 'USD',
-        description: `${product.name} x${quantity}${hasActiveSubscription ? ' (Descuento Preferencial -30%)' : ''}`,
+        description: `${product.name} x${quantity}${discount > 0 ? ` (Descuento ${Math.round(discount * 100)}%)` : ''}`,
         orderNumber,
         metadata: {
           order_id: orderId.toString(),

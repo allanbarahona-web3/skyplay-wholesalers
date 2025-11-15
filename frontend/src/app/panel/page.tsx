@@ -13,6 +13,7 @@ import {
 } from "@/lib/api";
 import CredentialsModal from "@/components/CredentialsModal";
 import CancelSubscriptionModal from "@/components/CancelSubscriptionModal";
+import SuccessInfoModal from "@/components/SuccessInfoModal";
 
 // Tipos básicos
 type Service = {
@@ -116,7 +117,7 @@ export default function PanelMayoristaPage() {
   const [period, setPeriod] = useState<string>("all");
   const [search, setSearch] = useState<string>("");
   const [searchError, setSearchError] = useState<string>("");
-  const [expandedAccordions, setExpandedAccordions] = useState<string[]>(["subscription"]);
+  const [expandedAccordions, setExpandedAccordions] = useState<string[]>([]);
   const [showCancelModal, setShowCancelModal] = useState<boolean>(false);
   const [selectedPlan, setSelectedPlan] = useState<string | null>(null);
   const [selectedAmount, setSelectedAmount] = useState<number>(0);
@@ -129,12 +130,19 @@ export default function PanelMayoristaPage() {
   const [showCredentialsModal, setShowCredentialsModal] = useState(false);
   const [purchaseDetails, setPurchaseDetails] = useState<any>(null);
   
+  // Estados para modal de pago exitoso
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [paymentProvider, setPaymentProvider] = useState<string>('');
+  
   // Estado para modal de confirmación de renovación
   const [showRenewalModal, setShowRenewalModal] = useState(false);
   const [renewalDetails, setRenewalDetails] = useState<any>(null);
   
   // Estado para ver credenciales de servicios existentes
   const [viewingService, setViewingService] = useState<Service | null>(null);
+  
+  // Bandera para evitar procesamiento duplicado de webhooks
+  const [processedOrder, setProcessedOrder] = useState<string | null>(null);
 
   // Detectar callback de PayPal/Stripe/Wallet
   useEffect(() => {
@@ -143,7 +151,21 @@ export default function PanelMayoristaPage() {
     const provider = searchParams?.get('provider');
     const orderType = searchParams?.get('type');
 
+    console.log('🔍 Payment params:', { payment, orderNumber, provider, orderType, processedOrder });
+
+    // Si no hay parámetros de pago, no hacer nada
+    if (!payment || !orderNumber) {
+      return;
+    }
+
+    // Evitar procesar la misma orden dos veces
+    if (processedOrder === orderNumber) {
+      console.log('⚠️ Order already processed, skipping');
+      return;
+    }
+
     if (payment === 'success' && orderNumber) {
+      setProcessedOrder(orderNumber);
       // Si es una recarga de billetera, solo mostrar toast y refrescar
       if (orderType === 'recharge' && (provider === 'paypal' || provider === 'stripe')) {
         setTimeout(() => {
@@ -224,25 +246,51 @@ export default function PanelMayoristaPage() {
         return;
       }
 
-      // Para compras de productos, mostrar credenciales
-      setTimeout(async () => {
+      // Para compras de productos, mostrar modal de pago exitoso
+      console.log('🛒 Starting payment success flow for order:', orderNumber);
+      
+      // Mostrar modal de pago exitoso inmediatamente
+      setPaymentProvider(provider || 'stripe');
+      setShowSuccessModal(true);
+      
+      // En paralelo, disparar la recarga de datos (el webhook procesará en background)
+      // PayPal necesita más intentos (5x3seg = 15seg) porque su webhook es más lento
+      const maxAttempts = provider === 'paypal' ? 5 : 3;
+      const fetchWithRetry = async (attempt = 1) => {
         try {
+          console.log(`📞 Attempt ${attempt}/${maxAttempts} - Checking order status ${orderNumber}`);
           const result = await getOrderCredentials(orderNumber);
-          if (result.ok && result.data) {
-            setPurchaseDetails(result.data);
-            setShowCredentialsModal(true);
-            // Limpiar URL sin recargar
-            window.history.replaceState({}, '', '/panel');
-          } else {
-            setToastMsg('⏳ Tu pedido está siendo procesado. Revisa tu email.');
-            setToastOk(false);
+          console.log(`📦 Result:`, result);
+          
+          // Si es 202 (pedido en proceso), reintentar
+          if (result.data?.statusCode === 202) {
+            console.log('⏳ Order still processing, will retry...');
+            if (attempt < maxAttempts) {
+              setTimeout(() => fetchWithRetry(attempt + 1, maxAttempts), 3000);
+            } else {
+              // Después de los intentos, simplemente recargar datos
+              loadOverviewData();
+            }
+            return;
+          }
+          
+          // Si el pedido ya fue procesado, recargar datos
+          if (result.ok) {
+            console.log('✅ Order processed, reloading data');
+            loadOverviewData();
           }
         } catch (error) {
-          console.error('Error fetching order credentials:', error);
-          setToastMsg('⏳ Tu pedido está siendo procesado. Revisa tu email.');
-          setToastOk(false);
+          console.error('Error checking order status:', error);
+          if (attempt < maxAttempts) {
+            setTimeout(() => fetchWithRetry(attempt + 1, maxAttempts), 3000);
+          } else {
+            loadOverviewData();
+          }
         }
-      }, 2000); // Esperar 2 segundos para que el webhook procese
+      };
+      
+      // Iniciar el primer intento después de 2 segundos
+      setTimeout(() => fetchWithRetry(), 2000);
     }
   }, [searchParams]);
 
@@ -1191,8 +1239,19 @@ export default function PanelMayoristaPage() {
         </section>
       </div>
 
-      {/* Modal de Credenciales (callback PayPal/Stripe) */}
-      {showCredentialsModal && purchaseDetails && (
+      {/* Modal de Pago Exitoso (después de PayPal/Stripe checkout) */}
+      <SuccessInfoModal
+        isOpen={showSuccessModal}
+        onClose={() => {
+          setShowSuccessModal(false);
+          setPaymentProvider('');
+          window.history.replaceState({}, '', '/panel');
+        }}
+        provider={paymentProvider}
+      />
+
+      {/* Modal de Credenciales (para ver credenciales desde el panel) */}
+      {showCredentialsModal && purchaseDetails && purchaseDetails.credentials && (
         <CredentialsModal
           isOpen={showCredentialsModal}
           onClose={() => {

@@ -1,16 +1,18 @@
 // src/modules/auth/auth.controller.ts
-import { Controller, Get, Post, Body, Res, Req, HttpException, Inject, RawBodyRequest, UseInterceptors } from '@nestjs/common';
+import { Controller, Get, Post, Body, Res, Req, HttpException, Inject, RawBodyRequest, UseInterceptors, UseGuards } from '@nestjs/common';
 import { Response, Request } from 'express';
 import { Pool } from 'pg';
 import * as jwt from 'jsonwebtoken';
 import * as bcrypt from 'bcrypt';
+import { randomUUID } from 'crypto';
 import Stripe from 'stripe';
 import { EmailService } from '../email/email.service';
 import { PayPalService } from '../paypal/paypal.service';
 import { UseLoginRateLimit, UseStrictRateLimit } from '../../middleware/rate-limit.interceptor';
+import { AuthGuard } from '../../guards/auth.guard';
 
 
-type JWTPayload = { id: number; tenant_id: number|null; role: string };
+type JWTPayload = { id: number; tenant_id: number|null; role: string; jti?: string; exp?: number };
 
 @Controller('auth')
 export class AuthController {
@@ -73,13 +75,15 @@ export class AuthController {
       await this.pg.query('UPDATE users SET totp_enabled = true WHERE id = $1', [u.id]);
     }
 
-    // Generar JWT
+        // Generar JWT con jti para revocación
+    const jti = randomUUID();
     const payload: JWTPayload = { 
       id: Number(u.id), 
       tenant_id: u.tenant_id ?? null, 
-      role: u.role 
+      role: u.role,
+      jti: jti
     };
-    const token = jwt.sign(payload, process.env.JWT_SECRET!, { expiresIn: '7d' });
+    const token = jwt.sign(payload, process.env.JWT_SECRET!, { expiresIn: '24h' });
 
     // Setear cookie
     res.cookie(process.env.SESSION_COOKIE_NAME || 'sky_sid', token, {
@@ -87,7 +91,7 @@ export class AuthController {
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
       path: '/',
-      maxAge: 7 * 24 * 60 * 60 * 1000,
+      maxAge: 24 * 60 * 60 * 1000,  // 24 horas
     });
 
     return res.json({ 
@@ -99,6 +103,42 @@ export class AuthController {
         role: u.role 
       } 
     });
+  }
+
+  @Post('logout')
+  @UseGuards(AuthGuard)
+  async logout(@Req() req: Request, @Res() res: Response) {
+    try {
+      const payload = (req as any).user as JWTPayload;
+
+      // Insertar jti en revoked_tokens para revocar el token
+      if (payload.jti && payload.id) {
+        await this.pg.query(
+          `INSERT INTO revoked_tokens (jti, user_id, expires_at, reason)
+           VALUES ($1, $2, to_timestamp($3), $4)
+           ON CONFLICT (jti) DO NOTHING`,
+          [
+            payload.jti,
+            payload.id,
+            payload.exp,
+            'User logout'
+          ]
+        );
+      }
+
+      // Limpiar cookie
+      res.clearCookie(process.env.SESSION_COOKIE_NAME || 'sky_sid', {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+        path: '/'
+      });
+
+      return res.json({ ok: true, message: 'Logged out successfully' });
+    } catch (error) {
+      console.error('Logout error:', error);
+      throw new HttpException('Error during logout', 500);
+    }
   }
 
   @Post('setup-totp')
@@ -195,12 +235,6 @@ export class AuthController {
     }
   }
 
-  @Post('logout')
-  async logout(@Res() res: Response) {
-    res.clearCookie(process.env.SESSION_COOKIE_NAME || 'sky_sid', { path: '/' });
-    return res.json({ ok: true });
-  }
-
   @Post('webhook/subscription')
   async handleStripeWebhook(
     @Req() req: RawBodyRequest<Request>,
@@ -248,7 +282,7 @@ export class AuthController {
 
       // 1. Verificar idempotencia CON LOCK - si ya se procesó, salir
       const checkResult = await client.query(
-        `SELECT event_type FROM billing_events WHERE id = $1 FOR UPDATE`,
+        `SELECT event_type, payload FROM billing_events WHERE id = $1 FOR UPDATE`,
         [orderId]
       );
 
@@ -263,6 +297,10 @@ export class AuthController {
         await client.query('ROLLBACK');
         break;
       }
+
+      // Obtener el precio unitario con descuento del payload
+      const payload = checkResult.rows[0].payload;
+      const unitPrice = payload?.unit_price || payload?.catalog_price || 0;
 
       // 2. Verificar stock disponible
       const productResult = await client.query(
@@ -308,12 +346,12 @@ export class AuthController {
 
       const credentials = credentialsResult.rows;
 
-      // 5. Crear servicios para cada credencial
+      // 5. Crear servicios para cada credencial con el precio pagado
       for (const cred of credentials) {
         await client.query(
-          `INSERT INTO services (tenant_id, product_code, credential_id, status, expires_at)
-           VALUES ($1, $2, $3, 'active', NOW() + INTERVAL '30 days')`,
-          [tenantId, productCode, cred.id]
+          `INSERT INTO services (tenant_id, product_code, credential_id, status, expires_at, paid_price)
+           VALUES ($1, $2, $3, 'active', NOW() + INTERVAL '30 days', $4)`,
+          [tenantId, productCode, cred.id, unitPrice]
         );
       }
 
@@ -782,11 +820,26 @@ export class AuthController {
         const paypalOrderId = resource.id;
         
         try {
+          // Verificar si ya fue capturado obteniendo detalles de la orden
+          const orderDetails = await this.paypalService.getOrder(paypalOrderId);
+          const orderStatus = orderDetails.status;
+          
+          // Si ya está capturado o completado, ignorar
+          if (orderStatus === 'COMPLETED' || orderStatus === 'CAPTURED') {
+            console.log(`⚠️ PayPal order ${paypalOrderId} already captured, skipping`);
+            break;
+          }
+          
           // Capturar el pago automáticamente
           const captureResult = await this.paypalService.captureOrder(paypalOrderId);
           console.log(`✅ PayPal order captured: ${paypalOrderId}`);
-        } catch (error) {
-          console.error('Error capturing PayPal order:', error);
+        } catch (error: any) {
+          // Si el error es ORDER_ALREADY_CAPTURED, es esperado (ignorar)
+          if (error.message?.includes('ORDER_ALREADY_CAPTURED')) {
+            console.log(`⚠️ PayPal order ${paypalOrderId} already captured (expected duplicate webhook)`);
+          } else {
+            console.error('Error capturing PayPal order:', error);
+          }
         }
         break;
       }
@@ -1047,19 +1100,21 @@ export class AuthController {
               [quantity, productCode]
             );
 
-            // 6. Obtener tenant_id del billing_event
+            // 6. Obtener tenant_id y precio unitario del billing_event
             const eventResult = await client.query(
-              `SELECT tenant_id FROM billing_events WHERE id = $1`,
+              `SELECT tenant_id, payload FROM billing_events WHERE id = $1`,
               [orderId]
             );
             const tenantId = eventResult.rows[0].tenant_id;
+            const payload = eventResult.rows[0].payload;
+            const unitPrice = payload?.unit_price || payload?.catalog_price || 0;
 
-            // 7. Crear registros en services para cada credencial
+            // 7. Crear registros en services para cada credencial con precio pagado
             for (const cred of credentials) {
               await client.query(
-                `INSERT INTO services (tenant_id, product_code, credential_id, status, expires_at)
-                 VALUES ($1, $2, $3, 'active', NOW() + INTERVAL '30 days')`,
-                [tenantId, productCode, cred.id]
+                `INSERT INTO services (tenant_id, product_code, credential_id, status, expires_at, paid_price)
+                 VALUES ($1, $2, $3, 'active', NOW() + INTERVAL '30 days', $4)`,
+                [tenantId, productCode, cred.id, unitPrice]
               );
             }
 
@@ -1095,7 +1150,7 @@ export class AuthController {
                 credentials: credentials.map(c => ({
                   email: c.email,
                   password: c.password,
-                  profileName: c.profile_name,
+                  profile_name: c.profile_name,
                   pin: c.pin,
                 })),
                 expiresAt: expiresAt,
