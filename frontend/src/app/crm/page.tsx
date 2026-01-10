@@ -25,8 +25,14 @@ type Service = {
   id: string;
   product_name: string;
   product_code: string;
+  credential_id?: string;
   credential_email?: string;
+  credential_password?: string;
+  profile_name?: string;
+  pin?: string;
+  status: string;
   expires_at?: string;
+  created_at?: string;
 };
 
 function Modal({ open, onClose, children }: { open: boolean; onClose: () => void; children: React.ReactNode }) {
@@ -48,17 +54,20 @@ export default function CRMPage() {
   // Estados
   const [clients, setClients] = useState<CRMClient[]>([]);
   const [availableCredentials, setAvailableCredentials] = useState<any[]>([]);
+  const [purchasedServices, setPurchasedServices] = useState<Service[]>([]);
   const [subscription, setSubscription] = useState<UserSubscription | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [searchText, setSearchText] = useState("");
   const [toastMsg, setToastMsg] = useState("");
   const [toastOk, setToastOk] = useState(false);
+  const [credentialsFilter, setCredentialsFilter] = useState<'all' | 'unassigned' | 'assigned'>('all');
   
   // Modal estados
   const [showAddClientModal, setShowAddClientModal] = useState(false);
   const [showEditClientModal, setShowEditClientModal] = useState(false);
   const [editingClient, setEditingClient] = useState<CRMClient | null>(null);
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
+  const [selectedServiceForClient, setSelectedServiceForClient] = useState<Service | null>(null);
   
   // Form estados
   const [formData, setFormData] = useState({
@@ -77,40 +86,46 @@ export default function CRMPage() {
   const loadCRMData = async () => {
     setIsLoading(true);
     try {
-      // Cargar clientes del CRM
-      const clientsResponse = await fetch('http://localhost:3000/api/crm/clients', {
-        credentials: 'include',
-      });
-
-      if (!clientsResponse.ok) {
-        if (clientsResponse.status === 401) {
-          router.push('/login');
-          return;
-        }
-        throw new Error('Error loading clients');
-      }
-
-      const clientsData = await clientsResponse.json();
-      setClients(Array.isArray(clientsData) ? clientsData : []);
-
-      // Cargar credenciales disponibles (últimas 15 minutos)
-      const credentialsResponse = await fetch('http://localhost:3000/api/crm/available-credentials', {
-        credentials: 'include',
-      });
-
-      if (credentialsResponse.ok) {
-        const credentialsData = await credentialsResponse.json();
-        setAvailableCredentials(Array.isArray(credentialsData) ? credentialsData : []);
-      }
-
-      // Cargar datos de suscripción del usuario
+      // Cargar datos de suscripción y servicios del usuario
       const overviewResponse = await fetch('http://localhost:3000/api/me/overview', {
         credentials: 'include',
       });
 
       if (overviewResponse.ok) {
         const overviewData = await overviewResponse.json();
-        setSubscription(overviewData);
+        console.log('📊 Overview data loaded:', overviewData);
+        
+        // Extract subscription
+        setSubscription(overviewData.subscription);
+        
+        // Extract purchased services (credenciales compradas)
+        if (overviewData.active_services && Array.isArray(overviewData.active_services)) {
+          console.log('🎫 Purchased services loaded:', overviewData.active_services.length);
+          console.log('🎫 First service status:', overviewData.active_services[0]?.status);
+          console.log('🎫 All services:', overviewData.active_services);
+          setPurchasedServices(overviewData.active_services);
+        }
+      } else {
+        console.error('❌ Failed to load overview:', overviewResponse.status);
+      }
+
+      // Cargar clientes del CRM (sin bloquear si falla)
+      try {
+        const clientsResponse = await fetch('http://localhost:3000/api/crm/clients', {
+          credentials: 'include',
+        });
+
+        if (!clientsResponse.ok) {
+          if (clientsResponse.status === 401) {
+            return;
+          }
+          throw new Error('Error loading clients');
+        }
+
+        const clientsData = await clientsResponse.json();
+        setClients(Array.isArray(clientsData) ? clientsData : []);
+      } catch (clientsError) {
+        console.warn('⚠️ Could not load clients (CRM endpoint may not exist):', clientsError);
       }
     } catch (error) {
       console.error('Error loading CRM data:', error);
@@ -132,6 +147,20 @@ export default function CRMPage() {
     }
 
     try {
+      // Si hay un servicio seleccionado, usar su credential_id
+      const credentialIdToSend = selectedServiceForClient 
+        ? selectedServiceForClient.credential_id || formData.credential_id
+        : formData.credential_id;
+
+      console.log('📝 Enviando cliente:', {
+        name: formData.name,
+        email: formData.email,
+        phone: formData.phone,
+        credential_id: credentialIdToSend,
+        service_id_original: selectedServiceForClient?.id,
+        notes: formData.notes
+      });
+
       const response = await fetch('http://localhost:3000/api/crm/clients', {
         method: 'POST',
         credentials: 'include',
@@ -142,19 +171,22 @@ export default function CRMPage() {
           name: formData.name,
           email: formData.email,
           phone: formData.phone || undefined,
-          credential_id: formData.credential_id || undefined,
+          credential_id: credentialIdToSend || undefined,
           notes: formData.notes || undefined
         })
       });
 
       if (!response.ok) {
         const error = await response.json();
+        console.error('❌ Backend error response:', { status: response.status, error });
         throw new Error(error.message || 'Error al crear cliente');
       }
 
       const newClient = await response.json();
+      console.log('✅ New client response:', newClient);
       setClients([newClient, ...clients]);
       setFormData({ name: "", email: "", phone: "", credential_id: "", notes: "" });
+      setSelectedServiceForClient(null);
       setShowAddClientModal(false);
       setToastMsg('✅ Cliente agregado correctamente');
       setToastOk(true);
@@ -176,6 +208,21 @@ export default function CRMPage() {
     }
 
     try {
+      // Si hay un servicio seleccionado, usar su credential_id
+      const credentialIdToSend = selectedServiceForClient 
+        ? selectedServiceForClient.credential_id || formData.credential_id
+        : formData.credential_id;
+
+      console.log('📝 Actualizando cliente:', {
+        id: editingClient.id,
+        name: formData.name,
+        email: formData.email,
+        phone: formData.phone,
+        credential_id: credentialIdToSend,
+        service_id_original: selectedServiceForClient?.id,
+        notes: formData.notes
+      });
+
       const response = await fetch(`http://localhost:3000/api/crm/clients/${editingClient.id}`, {
         method: 'PUT',
         credentials: 'include',
@@ -186,22 +233,30 @@ export default function CRMPage() {
           name: formData.name,
           email: formData.email,
           phone: formData.phone || undefined,
-          credential_id: formData.credential_id || undefined,
+          credential_id: credentialIdToSend || undefined,
           notes: formData.notes || undefined
         })
       });
 
       if (!response.ok) {
         const error = await response.json();
+        console.error('❌ Backend error response:', { 
+          status: response.status, 
+          error,
+          errorDetail: error?.detail || error?.message || 'No details'
+        });
         throw new Error(error.message || 'Error al actualizar cliente');
       }
 
       const updatedClient = await response.json();
+      console.log('✅ Updated client response:', updatedClient);
       setClients(clients.map(c => c.id === editingClient.id ? updatedClient : c));
       
       setEditingClient(null);
       setShowEditClientModal(false);
       setFormData({ name: "", email: "", phone: "", credential_id: "", notes: "" });
+      setSelectedServiceForClient(null);
+      setSelectedServiceForClient(null);
       setToastMsg('✅ Cliente actualizado correctamente');
       setToastOk(true);
     } catch (error) {
@@ -244,11 +299,21 @@ export default function CRMPage() {
       credential_id: client.credential_id || "",
       notes: client.notes || ""
     });
+    
+    // Si el cliente tiene credential_id, buscar el servicio correspondiente
+    if (client.credential_id) {
+      const matchingService = purchasedServices.find(s => s.credential_id === client.credential_id);
+      setSelectedServiceForClient(matchingService || null);
+    } else {
+      setSelectedServiceForClient(null);
+    }
+    
     setShowEditClientModal(true);
   };
 
   const openAddModal = () => {
     setFormData({ name: "", email: "", phone: "", credential_id: "", notes: "" });
+    setSelectedServiceForClient(null);
     setShowAddClientModal(true);
   };
 
@@ -278,10 +343,40 @@ export default function CRMPage() {
     }
   };
 
+  // Determinar si un servicio está activo (no vencido)
+  const isServiceActive = (service: Service): boolean => {
+    if (!service.expires_at) return true;
+    const expiryDate = new Date(service.expires_at);
+    const now = new Date();
+    return expiryDate.getTime() > now.getTime();
+  };
+
   const getDaysUntilExpiry = (expiryDate?: string) => {
     if (!expiryDate) return null;
     const days = Math.ceil((new Date(expiryDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
     return days;
+  };
+
+  const getServiceByCredentialId = (credentialId: string | undefined): Service | undefined => {
+    if (!credentialId) return undefined;
+    return purchasedServices.find(s => s.credential_id === credentialId);
+  };
+
+  const getClientByCredentialId = (credentialId: string | undefined): CRMClient | undefined => {
+    if (!credentialId) return undefined;
+    return clients.find(c => c.credential_id === credentialId);
+  };
+
+  const getFilteredCredentials = () => {
+    const activeCredentials = purchasedServices.filter(s => isServiceActive(s));
+    
+    if (credentialsFilter === 'unassigned') {
+      return activeCredentials.filter(s => !getClientByCredentialId(s.credential_id));
+    }
+    if (credentialsFilter === 'assigned') {
+      return activeCredentials.filter(s => !!getClientByCredentialId(s.credential_id));
+    }
+    return activeCredentials;
   };
 
   const filteredClients = clients.filter(c => 
@@ -327,11 +422,14 @@ export default function CRMPage() {
   const hasAccess = hasPreferentialSubscription || hasCRMBasic || hasCRMPro;
 
   console.log('🔍 CRM Access Check:', {
+    subscriptionStatus: subscription?.subscription?.status,
     hasPreferentialSubscription,
+    crm_basic: subscription?.crm_basic,
     hasCRMBasic,
+    crm_pro: subscription?.crm_pro,
     hasCRMPro,
     hasAccess,
-    subscription
+    fullSubscription: subscription
   });
 
   if (!subscription || !hasAccess) {
@@ -348,6 +446,9 @@ export default function CRMPage() {
             <li>✅ CRM PLUS individual, o</li>
             <li>✅ CRM PRO</li>
           </ul>
+          <p style={{ color: '#999', fontSize: '12px', marginBottom: '15px' }}>
+            {subscription ? `Estado actual: ${JSON.stringify({subscription: subscription.subscription?.status, crm_basic: subscription.crm_basic?.status, crm_pro: subscription.crm_pro?.status})}` : 'Cargando datos...'}
+          </p>
           <button 
             className="btn btn-primary"
             onClick={() => router.push('/panel')}
@@ -522,7 +623,8 @@ export default function CRMPage() {
                   </thead>
                   <tbody>
                     {filteredClients.map((client, idx) => {
-                      const daysLeft = getDaysUntilExpiry(client.expires_at);
+                      const assignedService = getServiceByCredentialId(client.credential_id);
+                      const daysLeft = getDaysUntilExpiry(assignedService?.expires_at);
                       let expiryStatus = 'active';
                       if (daysLeft !== null && daysLeft <= 0) expiryStatus = 'expired';
                       else if (daysLeft !== null && daysLeft <= 5) expiryStatus = 'soon';
@@ -533,9 +635,23 @@ export default function CRMPage() {
                           <td className="td-product" title={client.notes}>{client.name}</td>
                           <td className="td-muted">{client.email}</td>
                           <td className="td-muted">{client.phone || '—'}</td>
-                          <td className="td-date">{fmtDate(client.expires_at)}</td>
+                          <td className="td-date">
+                            {assignedService ? (
+                              <div>
+                                <div style={{ fontWeight: '500' }}>{assignedService.product_name}</div>
+                                {assignedService.profile_name && (
+                                  <div style={{ fontSize: '12px', color: '#6b7280' }}>{assignedService.profile_name}</div>
+                                )}
+                              </div>
+                            ) : (
+                              <span style={{ color: '#9ca3af' }}>—</span>
+                            )}
+                          </td>
+                          <td className="td-date">
+                            {assignedService?.expires_at ? fmtDate(assignedService.expires_at) : '—'}
+                          </td>
                           <td>
-                            {client.expires_at && (
+                            {assignedService?.expires_at && (
                               <span className={`badge badge-${expiryStatus}`}>
                                 {expiryStatus === 'expired' ? '⏰ Vencido' : 
                                  expiryStatus === 'soon' ? `⚠️ ${daysLeft}d` : 
@@ -579,6 +695,221 @@ export default function CRMPage() {
               )}
             </div>
           </section>
+
+          {/* Credenciales Section - NUEVA */}
+          <section className="panel-section" style={{ backgroundColor: '#f9fafb', borderColor: '#e5e7eb' }}>
+            <div className="section-header">
+              <div>
+                <h2 className="section-title">🎫 Mis Credenciales Compradas</h2>
+                <p className="section-desc">Tus servicios activos disponibles para asignar a clientes</p>
+              </div>
+            </div>
+
+            {purchasedServices.filter(s => isServiceActive(s)).length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '40px 20px', color: '#86868b' }}>
+                <div style={{ fontSize: '48px', marginBottom: '12px' }}>📭</div>
+                <p style={{ margin: '0 0 12px 0', fontSize: '16px', fontWeight: '500' }}>No tienes credenciales activas</p>
+                <p style={{ margin: 0, fontSize: '14px' }}>
+                  Ve al <strong>Catálogo</strong> para comprar Netflix, Spotify, Disney+ y más
+                </p>
+                <button
+                  className="btn btn-primary"
+                  onClick={() => window.location.href = '/'}
+                  style={{ marginTop: '16px' }}
+                >
+                  Ir al Catálogo
+                </button>
+              </div>
+            ) : (
+              <>
+                {/* Filtros */}
+                <div style={{ display: 'flex', gap: '8px', marginBottom: '20px', flexWrap: 'wrap' }}>
+                  <button
+                    onClick={() => setCredentialsFilter('all')}
+                    style={{
+                      padding: '8px 16px',
+                      borderRadius: '6px',
+                      border: credentialsFilter === 'all' ? '2px solid #0066cc' : '1px solid #d1d5db',
+                      backgroundColor: credentialsFilter === 'all' ? '#0066cc' : '#ffffff',
+                      color: credentialsFilter === 'all' ? '#ffffff' : '#1d1d1f',
+                      fontSize: '14px',
+                      fontWeight: '500',
+                      cursor: 'pointer',
+                      transition: 'all 0.2s'
+                    }}
+                  >
+                    📋 Todas ({purchasedServices.filter(s => isServiceActive(s)).length})
+                  </button>
+                  <button
+                    onClick={() => setCredentialsFilter('unassigned')}
+                    style={{
+                      padding: '8px 16px',
+                      borderRadius: '6px',
+                      border: credentialsFilter === 'unassigned' ? '2px solid #10b981' : '1px solid #d1d5db',
+                      backgroundColor: credentialsFilter === 'unassigned' ? '#10b981' : '#ffffff',
+                      color: credentialsFilter === 'unassigned' ? '#ffffff' : '#1d1d1f',
+                      fontSize: '14px',
+                      fontWeight: '500',
+                      cursor: 'pointer',
+                      transition: 'all 0.2s'
+                    }}
+                  >
+                    ✓ Por Asignar ({purchasedServices.filter(s => isServiceActive(s) && !getClientByCredentialId(s.credential_id)).length})
+                  </button>
+                  <button
+                    onClick={() => setCredentialsFilter('assigned')}
+                    style={{
+                      padding: '8px 16px',
+                      borderRadius: '6px',
+                      border: credentialsFilter === 'assigned' ? '2px solid #f59e0b' : '1px solid #d1d5db',
+                      backgroundColor: credentialsFilter === 'assigned' ? '#f59e0b' : '#ffffff',
+                      color: credentialsFilter === 'assigned' ? '#ffffff' : '#1d1d1f',
+                      fontSize: '14px',
+                      fontWeight: '500',
+                      cursor: 'pointer',
+                      transition: 'all 0.2s'
+                    }}
+                  >
+                    📌 Asignadas ({purchasedServices.filter(s => isServiceActive(s) && getClientByCredentialId(s.credential_id)).length})
+                  </button>
+                </div>
+
+                {/* Credenciales */}
+                <div style={{ display: 'grid', gap: '16px' }}>
+                  {getFilteredCredentials().length === 0 ? (
+                    <div style={{ textAlign: 'center', padding: '30px 20px', color: '#86868b', backgroundColor: '#ffffff', borderRadius: '8px', border: '1px solid #e5e7eb' }}>
+                      {credentialsFilter === 'unassigned' && (
+                        <>
+                          <div style={{ fontSize: '36px', marginBottom: '8px' }}>✓</div>
+                          <p style={{ margin: 0, fontSize: '14px' }}>Todas tus credenciales están asignadas</p>
+                        </>
+                      )}
+                      {credentialsFilter === 'assigned' && (
+                        <>
+                          <div style={{ fontSize: '36px', marginBottom: '8px' }}>📭</div>
+                          <p style={{ margin: 0, fontSize: '14px' }}>No tienes credenciales asignadas</p>
+                        </>
+                      )}
+                    </div>
+                  ) : (
+                    getFilteredCredentials().map((service) => (
+                  <div
+                    key={service.id}
+                    style={{
+                      backgroundColor: 'white',
+                      border: '1px solid #e5e7eb',
+                      borderRadius: '8px',
+                      padding: '16px',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      cursor: 'pointer',
+                      transition: 'all 0.2s'
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.boxShadow = '0 4px 6px rgba(0,0,0,0.1)';
+                      e.currentTarget.style.transform = 'translateY(-2px)';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.boxShadow = 'none';
+                      e.currentTarget.style.transform = 'translateY(0)';
+                    }}
+                  >
+                    <div style={{ flex: 1 }}>
+                      <div style={{ marginBottom: '8px' }}>
+                        <h3 style={{ margin: 0, fontSize: '16px', fontWeight: '600', color: '#1d1d1f' }}>
+                          {service.product_name || service.product_code}
+                        </h3>
+                      </div>
+                      
+                      <div style={{ display: 'flex', gap: '16px', fontSize: '14px', color: '#6b7280' }}>
+                        {service.credential_email && (
+                          <div>
+                            <span style={{ fontWeight: '500' }}>📧 </span>
+                            {service.credential_email}
+                          </div>
+                        )}
+                        {service.profile_name && (
+                          <div>
+                            <span style={{ fontWeight: '500' }}>👤 </span>
+                            {service.profile_name}
+                          </div>
+                        )}
+                        {service.expires_at && (
+                          <div>
+                            <span style={{ fontWeight: '500' }}>📅 </span>
+                            Vence: {fmtDate(service.expires_at)}
+                          </div>
+                        )}
+                      </div>
+
+                      <div style={{ marginTop: '8px', display: 'flex', gap: '8px' }}>
+                        {(() => {
+                          const assignedClient = getClientByCredentialId(service.credential_id);
+                          return assignedClient ? (
+                            <span style={{
+                              display: 'inline-block',
+                              backgroundColor: '#fef3c7',
+                              color: '#92400e',
+                              padding: '4px 12px',
+                              borderRadius: '12px',
+                              fontSize: '12px',
+                              fontWeight: '500'
+                            }}>
+                              ✓ Asignada a <strong>{assignedClient.name}</strong>
+                            </span>
+                          ) : (
+                            <span style={{
+                              display: 'inline-block',
+                              backgroundColor: '#dcfce7',
+                              color: '#166534',
+                              padding: '4px 12px',
+                              borderRadius: '12px',
+                              fontSize: '12px',
+                              fontWeight: '500'
+                            }}>
+                              ✓ Activo
+                            </span>
+                          );
+                        })()}
+                      </div>
+                    </div>
+
+                    {(() => {
+                      const assignedClient = getClientByCredentialId(service.credential_id);
+                      return assignedClient ? (
+                        <div style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '8px',
+                          padding: '8px 12px',
+                          backgroundColor: '#fef3c7',
+                          borderRadius: '8px',
+                          marginLeft: '16px'
+                        }}>
+                          <span style={{ fontSize: '14px', fontWeight: '500', color: '#92400e' }}>
+                            📌 Asignada a {assignedClient.name}
+                          </span>
+                        </div>
+                      ) : (
+                        <button
+                          className="btn btn-primary"
+                          onClick={() => {
+                            setSelectedServiceForClient(service);
+                            openAddModal();
+                          }}
+                          style={{ marginLeft: '16px', whiteSpace: 'nowrap' }}
+                        >
+                          + Asignar a Cliente
+                        </button>
+                      );
+                    })()}
+                  </div>
+                )))}
+              </div>
+            </>
+          )}
+        </section>
 
           {/* Notas o Info Section */}
           {isCRMPro && (
@@ -659,12 +990,31 @@ export default function CRMPage() {
       <Modal open={showAddClientModal} onClose={() => setShowAddClientModal(false)}>
         <div style={{ marginBottom: '20px' }}>
           <h2 style={{ margin: '0 0 8px 0', fontSize: '20px', color: '#1d1d1f' }}>
-            ➕ Nuevo Cliente
+            ➕ Nuevo Cliente {selectedServiceForClient && `- ${selectedServiceForClient.product_name}`}
           </h2>
           <p style={{ margin: 0, fontSize: '14px', color: '#86868b' }}>
-            Agrega un nuevo cliente a tu CRM
+            {selectedServiceForClient ? 'Crea un nuevo cliente y asigna esta credencial' : 'Agrega un nuevo cliente a tu CRM'}
           </p>
         </div>
+
+        {selectedServiceForClient && (
+          <div style={{
+            backgroundColor: '#eff6ff',
+            border: '1px solid #93c5fd',
+            borderRadius: '8px',
+            padding: '12px',
+            marginBottom: '16px'
+          }}>
+            <p style={{ margin: 0, fontSize: '13px', color: '#1e40af' }}>
+              <strong>📌 Credencial seleccionada:</strong> {selectedServiceForClient.product_name}
+            </p>
+            {selectedServiceForClient.credential_email && (
+              <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: '#1e3a8a' }}>
+                {selectedServiceForClient.credential_email}
+              </p>
+            )}
+          </div>
+        )}
 
         <form onSubmit={handleAddClient}>
           <div style={{ marginBottom: '16px' }}>
@@ -732,28 +1082,63 @@ export default function CRMPage() {
 
           <div style={{ marginBottom: '16px' }}>
             <label style={{ display: 'block', marginBottom: '6px', fontWeight: '500', fontSize: '14px', color: '#1d1d1f' }}>
-              Credencial a asignar
+              Credencial a asignar {selectedServiceForClient ? '(seleccionada)' : '*'}
             </label>
-            <select 
-              value={formData.credential_id}
-              onChange={(e) => setFormData({ ...formData, credential_id: e.target.value })}
-              style={{ 
-                width: '100%',
+            {selectedServiceForClient ? (
+              <div style={{
                 padding: '10px 12px',
+                backgroundColor: '#f3f4f6',
                 borderRadius: '8px',
                 border: '1px solid #d1d5db',
-                fontSize: '14px',
-                backgroundColor: '#ffffff',
-                outline: 'none'
-              }}
-            >
-              <option value="">Selecciona una credencial</option>
-              {availableCredentials.map((cred: any) => (
-                <option key={cred.id} value={cred.id}>
-                  {cred.product_name} - {cred.clients_count || 0} clientes
-                </option>
-              ))}
-            </select>
+                color: '#1d1d1f'
+              }}>
+                <strong>{selectedServiceForClient.product_name}</strong>
+                {selectedServiceForClient.credential_email && (
+                  <div style={{ fontSize: '13px', color: '#6b7280', marginTop: '4px' }}>
+                    {selectedServiceForClient.credential_email}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <select 
+                value={formData.credential_id}
+                onChange={(e) => {
+                  const credentialId = e.target.value;
+                  const service = purchasedServices.find(s => s.credential_id === credentialId && isServiceActive(s));
+                  if (service) {
+                    setSelectedServiceForClient(service);
+                    setFormData({ ...formData, credential_id: credentialId });
+                  }
+                }}
+                style={{ 
+                  width: '100%',
+                  padding: '10px 12px',
+                  borderRadius: '8px',
+                  border: '1px solid #d1d5db',
+                  fontSize: '14px',
+                  backgroundColor: '#ffffff',
+                  outline: 'none'
+                }}
+              >
+                <option value="">Selecciona una credencial de tus compras</option>
+                {purchasedServices.filter(s => isServiceActive(s)).map((service: Service) => {
+                  const assignedClient = getClientByCredentialId(service.credential_id);
+                  const isAssigned = !!assignedClient;
+                  return (
+                    <option 
+                      key={service.id} 
+                      value={service.credential_id || ""}
+                      disabled={isAssigned}
+                      style={{
+                        color: isAssigned ? '#999' : '#000'
+                      }}
+                    >
+                      {service.product_name} {service.profile_name ? `(${service.profile_name})` : ''} {service.credential_email ? `- ${service.credential_email}` : ''}{isAssigned ? ` [Asignada a ${assignedClient?.name}]` : ''}
+                    </option>
+                  );
+                })}
+              </select>
+            )}
           </div>
 
           <div style={{ marginBottom: '16px' }}>
@@ -876,8 +1261,17 @@ export default function CRMPage() {
               Credencial asignada
             </label>
             <select 
-              value={formData.credential_id}
-              onChange={(e) => setFormData({ ...formData, credential_id: e.target.value })}
+              value={selectedServiceForClient?.credential_id || ""}
+              onChange={(e) => {
+                const credentialId = e.target.value;
+                const service = purchasedServices.find(s => s.credential_id === credentialId);
+                setSelectedServiceForClient(service || null);
+                if (service?.credential_id) {
+                  setFormData({ ...formData, credential_id: service.credential_id });
+                } else {
+                  setFormData({ ...formData, credential_id: "" });
+                }
+              }}
               style={{ 
                 width: '100%',
                 padding: '10px 12px',
@@ -888,12 +1282,45 @@ export default function CRMPage() {
                 outline: 'none'
               }}
             >
-              <option value="">Selecciona una credencial</option>
-              {availableCredentials.map((cred: any) => (
-                <option key={cred.id} value={cred.id}>
-                  {cred.product_name} - {cred.clients_count || 0} clientes
-                </option>
-              ))}
+              <option value="">Sin credencial asignada</option>
+              <optgroup label="Activas">
+                {purchasedServices.filter(s => isServiceActive(s)).map((service: Service) => {
+                  const assignedClient = getClientByCredentialId(service.credential_id);
+                  const isAssigned = !!assignedClient && assignedClient.id !== editingClient?.id;
+                  return (
+                    <option 
+                      key={service.id} 
+                      value={service.credential_id || ""}
+                      disabled={isAssigned}
+                      style={{
+                        color: isAssigned ? '#999' : '#000'
+                      }}
+                    >
+                      {service.product_name} {service.profile_name ? `(${service.profile_name})` : ''} {service.credential_email ? `- ${service.credential_email}` : ''}{isAssigned ? ` [Asignada a ${assignedClient?.name}]` : ''}
+                    </option>
+                  );
+                })}
+              </optgroup>
+              {purchasedServices.filter(s => !isServiceActive(s)).length > 0 && (
+                <optgroup label="Vencidas">
+                  {purchasedServices.filter(s => !isServiceActive(s)).map((service: Service) => {
+                    const assignedClient = getClientByCredentialId(service.credential_id);
+                    const isAssigned = !!assignedClient && assignedClient.id !== editingClient?.id;
+                    return (
+                      <option 
+                        key={service.id} 
+                        value={service.credential_id || ""}
+                        disabled={isAssigned}
+                        style={{
+                          color: isAssigned ? '#999' : '#000'
+                        }}
+                      >
+                        {service.product_name} {service.profile_name ? `(${service.profile_name})` : ''} {service.credential_email ? `- ${service.credential_email}` : ''} [Vencida]{isAssigned ? ` [Asignada a ${assignedClient?.name}]` : ''}
+                      </option>
+                    );
+                  })}
+                </optgroup>
+              )}
             </select>
           </div>
 

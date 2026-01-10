@@ -31,6 +31,8 @@ async overview(@Req() req: Request) {
   const payload = (req as any).user as JWTPayload;
   const { id: userId, tenant_id, role } = payload;
 
+  console.log('📊 Overview endpoint called with:', { userId, tenant_id, role });
+
   // Obtener datos del usuario
   const userQuery = `SELECT id, email, role, created_at FROM users WHERE id = $1`;
   const { rows: userRows } = await this.pg.query(userQuery, [userId]);
@@ -42,6 +44,7 @@ async overview(@Req() req: Request) {
 
   // Si no tiene tenant_id, retornar datos básicos
   if (!tenant_id) {
+    console.warn('⚠️ User has no tenant_id');
     return {
       user: {
         id: user.id,
@@ -66,7 +69,9 @@ async overview(@Req() req: Request) {
   // Subscription
   const subQ = `SELECT status, current_period_end, stripe_subscription_id, product_type, billing_cycle, cancel_at_period_end, remaining_days, paused_at FROM subscriptions WHERE tenant_id=$1 LIMIT 1`;
   const sub = await this.pg.query(subQ, [tenant_id]);
+  console.log('🔍 Subscription query result for tenant_id', tenant_id, ':', sub.rows);
   const subscription = sub.rows[0] || { status: 'none', current_period_end: null };
+  console.log('📋 Final subscription object:', subscription);
 
   // Wholesaler status y wallet balance
   const tenQ = `SELECT name, status, wallet_balance FROM tenants WHERE id=$1 LIMIT 1`;
@@ -83,6 +88,7 @@ async overview(@Req() req: Request) {
       s.id, 
       s.external_ref, 
       s.product_code,
+      s.credential_id,
       COALESCE(p.name, s.product_code) AS product_name,
       COALESCE(p.price::numeric, 0) AS price,
       COALESCE(
@@ -126,6 +132,7 @@ async overview(@Req() req: Request) {
       id: svc.id,
       external_ref: svc.external_ref,
       product_code: svc.product_code,
+      credential_id: svc.credential_id,
       product_name: svc.product_name,
       status: svc.status,
       expires_at: svc.expires_at,

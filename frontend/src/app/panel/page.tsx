@@ -973,31 +973,40 @@ export default function PanelMayoristaPage() {
               {expandedAccordions.includes("crm") ? "Ocultar" : "Más información"} {expandedAccordions.includes("crm") ? "▼" : "▶"}
             </button>
           )}
-          <p className="action-card-note">Desde $9.95/mes CRM PLUS</p>
+          <p className="action-card-note">
+            {subscription.status === "active" ? "CRM PLUS incluido • " : "Desde $9.95/mes "}
+            CRM PRO desde $24.95/mes
+          </p>
           
           {expandedAccordions.includes("crm") && (
             <div style={{ marginTop: "20px", paddingTop: "20px", borderTop: "1px solid #e5e7eb" }}>
-              <div className="sub-paygrid">
-                <div className={`card sub-card${selectedCRMPlan === "crm-basic-monthly" ? " selected" : ""}`} onClick={() => handleSelectCRMPlan("crm-basic-monthly", 9.95)}>
-                  <div className="sub-card-row">
-                    <div>
-                      <h3 className="sub-card-title">CRM PLUS</h3>
-                      <p className="muted sub-card-desc">Historial de clientes + Control de Vencimientos + Notas</p>
-                    </div>
-                    <div className="sub-card-right">
-                      <div className="sub-card-price">$9.95</div>
-                      <div className="muted sub-card-mes">/mes</div>
+              {subscription.status !== "active" && (
+                <>
+                  <div className="sub-paygrid">
+                    <div className={`card sub-card${selectedCRMPlan === "crm-basic-monthly" ? " selected" : ""}`} onClick={() => handleSelectCRMPlan("crm-basic-monthly", 9.95)}>
+                      <div className="sub-card-row">
+                        <div>
+                          <h3 className="sub-card-title">CRM PLUS</h3>
+                          <p className="muted sub-card-desc">Historial de clientes + Control de Vencimientos + Notas</p>
+                        </div>
+                        <div className="sub-card-right">
+                          <div className="sub-card-price">$9.95</div>
+                          <div className="muted sub-card-mes">/mes</div>
+                        </div>
+                      </div>
                     </div>
                   </div>
-                </div>
-              </div>
+                  <div style={{ marginTop: "20px" }} />
+                </>
+              )}
+              
               {subscription.status === "active" && (
-                <p className="muted" style={{ fontSize: '12px', marginTop: '12px', marginBottom: '15px', color: '#666', padding: '10px', backgroundColor: '#f0fdf4', borderRadius: '6px', border: '1px solid #86efac' }}>
+                <p className="muted" style={{ fontSize: '12px', marginTop: '0', marginBottom: '15px', color: '#666', padding: '10px', backgroundColor: '#f0fdf4', borderRadius: '6px', border: '1px solid #86efac' }}>
                   💡 <strong>Ya incluido:</strong> Tu Suscripción Preferencial ya tiene CRM PLUS incluido gratis
                 </p>
               )}
 
-              <div className="sub-paygrid" style={{ marginTop: "20px" }}>
+              <div className="sub-paygrid">
                 <div className={`card sub-card${selectedCRMPlan === "crm-pro-monthly" ? " selected" : ""}`} onClick={() => handleSelectCRMPlan("crm-pro-monthly", 24.95)}>
                   <div className="sub-card-best">Recomendado</div>
                   <div className="sub-card-row">

@@ -367,23 +367,34 @@ export class SubscriptionsController {
     const { tenant_id } = (req as any).user as JWTPayload;
     if (!tenant_id) throw new HttpException('Unauthorized', 401);
 
-    const { subscriptionType, billingCycle, price } = body;
+    let { subscriptionType, billingCycle, price } = body;
     if (!subscriptionType || !billingCycle || price <= 0) {
       throw new HttpException('Invalid subscription data', 400);
     }
 
+    // Mapear valores del frontend a valores válidos del enum subscription_product_type
+    const typeMapping: { [key: string]: string } = {
+      'subscription-pref': 'preferential',
+      'crm-basic': 'crm-pro',
+      'crm-pro': 'crm-pro',
+      'preferential': 'preferential',
+      'tienda': 'tienda'
+    };
+    
+    const mappedType = typeMapping[subscriptionType] || subscriptionType;
+
     const orderNumber = `SUB-WALLET-${Date.now()}`;
     
     try {
-      // Obtener balance de la billetera del usuario
-      const walletQuery = `SELECT balance FROM wallets WHERE tenant_id = $1`;
+      // Obtener balance de la billetera del usuario desde tenants
+      const walletQuery = `SELECT wallet_balance FROM tenants WHERE id = $1`;
       const walletResult = await this.pg.query(walletQuery, [tenant_id]);
       
       if (walletResult.rows.length === 0) {
-        throw new HttpException('Wallet not found', 404);
+        throw new HttpException('Tenant not found', 404);
       }
 
-      const walletBalance = parseFloat(walletResult.rows[0].balance);
+      const walletBalance = parseFloat(walletResult.rows[0].wallet_balance || 0);
 
       // Verificar si tiene suficiente saldo
       if (walletBalance < price) {
@@ -395,7 +406,7 @@ export class SubscriptionsController {
 
       // Descontar de la billetera
       await this.pg.query(
-        `UPDATE wallets SET balance = balance - $1 WHERE tenant_id = $2`,
+        `UPDATE tenants SET wallet_balance = wallet_balance - $1 WHERE id = $2`,
         [price, tenant_id]
       );
 
@@ -414,17 +425,13 @@ export class SubscriptionsController {
 
       await this.pg.query(
         `INSERT INTO billing_events (
-          tenant_id, event_type, source, order_number, 
-          amount, currency, status, payload, created_at
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+          tenant_id, event_type, source, order_number, payload
+        ) VALUES ($1, $2, $3, $4, $5)`,
         [
           tenant_id,
           'subscription_completed',
           'WALLET',
           orderNumber,
-          price,
-          'USD',
-          'completed',
           JSON.stringify({
             subscription_type: subscriptionType,
             billing_cycle: billingCycle,
@@ -432,8 +439,7 @@ export class SubscriptionsController {
             original_amount: price,
             discount_applied: 0,
             renewal_date: renewalDate.toISOString()
-          }),
-          now.toISOString()
+          })
         ]
       );
 
@@ -449,10 +455,10 @@ export class SubscriptionsController {
       const endDate = new Date(now);
       endDate.setMonth(endDate.getMonth() + months);
 
-      // Verificar si ya existe una suscripción activa
+      // Verificar si ya existe una suscripción para este tenant
       const existingSubQuery = `
         SELECT id FROM subscriptions 
-        WHERE tenant_id = $1 AND status IN ('active', 'pending')
+        WHERE tenant_id = $1
         LIMIT 1
       `;
       const existingSubResult = await this.pg.query(existingSubQuery, [tenant_id]);
@@ -462,33 +468,40 @@ export class SubscriptionsController {
         await this.pg.query(
           `UPDATE subscriptions 
            SET status = 'active', 
-               current_period_start = $2,
-               current_period_end = $3,
+               current_period_end = $2,
+               product_type = $3,
+               billing_cycle = $4,
                updated_at = NOW()
            WHERE id = $1`,
-          [existingSubResult.rows[0].id, startDate.toISOString(), endDate.toISOString()]
+          [existingSubResult.rows[0].id, endDate.toISOString(), mappedType, billingCycle]
         );
       } else {
         // Crear nueva suscripción
         await this.pg.query(
           `INSERT INTO subscriptions (
-            tenant_id, status, current_period_start, current_period_end, 
-            subscription_type, billing_cycle, created_at, updated_at
-          ) VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW())`,
+            tenant_id, status, current_period_end, 
+            product_type, billing_cycle, provider
+          ) VALUES ($1, $2, $3, $4, $5, $6)`,
           [
             tenant_id,
             'active',
-            startDate.toISOString(),
             endDate.toISOString(),
-            subscriptionType,
-            billingCycle
+            mappedType,
+            billingCycle,
+            'manual'
           ]
         );
       }
 
       // Obtener datos del usuario para enviar email
       try {
-        const userQuery = `SELECT u.email, u.name FROM users u WHERE u.tenant_id = $1`;
+        const userQuery = `
+          SELECT u.email, t.name 
+          FROM users u 
+          JOIN tenants t ON t.id = u.tenant_id 
+          WHERE u.tenant_id = $1
+          LIMIT 1
+        `;
         const userResult = await this.pg.query(userQuery, [tenant_id]);
         
         if (userResult.rows.length > 0) {

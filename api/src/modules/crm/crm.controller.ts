@@ -11,13 +11,13 @@ import {
   HttpException,
   HttpStatus,
 } from '@nestjs/common';
-import { AuthGuard } from '@nestjs/passport';
+import { AuthGuard, JWTPayload } from '../../guards/auth.guard';
 import { CRMService } from './crm.service';
 import { CreateCRMClientDto } from './dto/create-crm-client.dto';
 import { UpdateCRMClientDto } from './dto/update-crm-client.dto';
 
-@Controller('api/crm')
-@UseGuards(AuthGuard('jwt'))
+@Controller('crm')
+@UseGuards(AuthGuard)
 export class CRMController {
   constructor(private crmService: CRMService) {}
 

@@ -9,16 +9,16 @@ export class CRMService {
 
   /**
    * Verificar que el tenant tiene una suscripción CRM activa
-   * (Preferencial, CRM BASIC o CRM PRO)
+   * (Preferencial, CRM PRO o Tienda)
    */
   async verifyCRMAccess(tenantId: string): Promise<boolean> {
     const query = `
       SELECT status FROM subscriptions 
       WHERE tenant_id = $1 
         AND status = 'active'
-        AND (product_type = 'Suscripción Preferencial' 
-          OR product_type = 'CRM PLUS' 
-          OR product_type = 'CRM PRO')
+        AND (product_type = 'preferential' 
+          OR product_type = 'crm-pro' 
+          OR product_type = 'tienda')
       LIMIT 1
     `;
     
@@ -38,8 +38,13 @@ export class CRMService {
    * Crear un nuevo cliente CRM
    */
   async createClient(tenantId: string, createCRMClientDto: CreateCRMClientDto) {
+    console.log('🎫 [CRM] Creating client for tenant:', tenantId);
+    console.log('🎫 [CRM] Client data:', createCRMClientDto);
+    
     // Verificar acceso CRM
     const hasCRMAccess = await this.verifyCRMAccess(tenantId);
+    console.log('🎫 [CRM] Has CRM access:', hasCRMAccess);
+    
     if (!hasCRMAccess) {
       throw new HttpException(
         'No tienes acceso al CRM. Requiere suscripción activa (Preferencial, CRM PLUS o CRM PRO)',
@@ -55,6 +60,22 @@ export class CRMService {
       expires_at,
       notes,
     } = createCRMClientDto;
+
+    // Validar que la credencial no esté ya asignada a otro cliente
+    if (credential_id) {
+      const existingClientQuery = `
+        SELECT id FROM crm_clients 
+        WHERE tenant_id = $1 AND credential_id = $2
+        LIMIT 1;
+      `;
+      const existingClientResult = await this.pool.query(existingClientQuery, [tenantId, credential_id]);
+      if (existingClientResult.rows.length > 0) {
+        throw new HttpException(
+          'Esta credencial ya está asignada a otro cliente. Una credencial solo puede tener un cliente.',
+          HttpStatus.BAD_REQUEST,
+        );
+      }
+    }
 
     const query = `
       INSERT INTO crm_clients (tenant_id, name, email, phone, credential_id, expires_at, notes)
@@ -72,14 +93,24 @@ export class CRMService {
       notes || null,
     ];
 
+    console.log('🎫 [CRM] Executing INSERT query with values:', values);
+
     try {
       const result = await this.pool.query(query, values);
+      console.log('🎫 [CRM] Client created successfully:', result.rows[0]);
       return result.rows[0];
     } catch (error) {
+      console.error('🎫 [CRM] Error creating client:', error);
       if (error.code === '23505') {
         // Unique constraint violation
+        if (error.constraint === 'crm_clients_tenant_credential_unique') {
+          throw new HttpException(
+            'Esta credencial ya está asignada a otro cliente',
+            HttpStatus.BAD_REQUEST,
+          );
+        }
         throw new HttpException(
-          'Este cliente (email) ya existe para ti',
+          'Este cliente ya existe',
           HttpStatus.BAD_REQUEST,
         );
       }
@@ -183,6 +214,12 @@ export class CRMService {
     clientId: string,
     updateCRMClientDto: UpdateCRMClientDto,
   ) {
+    console.log('🎫 [CRM] Update client request:', {
+      clientId,
+      tenantId,
+      updateData: updateCRMClientDto
+    });
+
     // Verificar acceso CRM
     const hasCRMAccess = await this.verifyCRMAccess(tenantId);
     if (!hasCRMAccess) {
@@ -193,11 +230,29 @@ export class CRMService {
     }
 
     // Primero verificar que el cliente pertenece al tenant
-    const checkQuery = 'SELECT id FROM crm_clients WHERE id = $1 AND tenant_id = $2;';
+    const checkQuery = 'SELECT id, credential_id FROM crm_clients WHERE id = $1 AND tenant_id = $2;';
     const checkResult = await this.pool.query(checkQuery, [clientId, tenantId]);
 
     if (checkResult.rows.length === 0) {
       throw new HttpException('Cliente no encontrado', HttpStatus.NOT_FOUND);
+    }
+
+    const currentClient = checkResult.rows[0];
+
+    // Validar que la credencial no esté ya asignada a otro cliente (si se está cambiando)
+    if (updateCRMClientDto.credential_id && updateCRMClientDto.credential_id !== currentClient.credential_id) {
+      const existingClientQuery = `
+        SELECT id FROM crm_clients 
+        WHERE tenant_id = $1 AND credential_id = $2 AND id != $3
+        LIMIT 1;
+      `;
+      const existingClientResult = await this.pool.query(existingClientQuery, [tenantId, updateCRMClientDto.credential_id, clientId]);
+      if (existingClientResult.rows.length > 0) {
+        throw new HttpException(
+          'Esta credencial ya está asignada a otro cliente. Una credencial solo puede tener un cliente.',
+          HttpStatus.BAD_REQUEST,
+        );
+      }
     }
 
     // Construir query de actualización dinámicamente
@@ -231,11 +286,25 @@ export class CRMService {
 
     try {
       const result = await this.pool.query(updateQuery, values);
+      console.log('🎫 [CRM] Client updated successfully:', result.rows[0]);
       return result.rows[0];
     } catch (error) {
+      console.error('❌ [CRM] Error updating client:', error);
       if (error.code === '23505') {
+        if (error.constraint === 'crm_clients_tenant_credential_unique') {
+          throw new HttpException(
+            'Esta credencial ya está asignada a otro cliente',
+            HttpStatus.BAD_REQUEST,
+          );
+        }
         throw new HttpException(
-          'Este email ya existe para otro cliente',
+          'Este cliente ya existe',
+          HttpStatus.BAD_REQUEST,
+        );
+      }
+      if (error.code === '23503') {
+        throw new HttpException(
+          'La credencial especificada no existe',
           HttpStatus.BAD_REQUEST,
         );
       }
@@ -315,7 +384,8 @@ export class CRMService {
   }
 
   /**
-   * Obtener credenciales disponibles para asignar (últimas 15 minutos compradas)
+   * Obtener credenciales disponibles para asignar a clientes CRM
+   * Retorna todas las credenciales activas del tenant que pueden ser reasignadas
    */
   async getAvailableCredentials(tenantId: string) {
     // Verificar acceso CRM
@@ -327,23 +397,22 @@ export class CRMService {
       );
     }
 
+    // Obtener todas las credenciales disponibles del tenant
+    // Incluyen tanto credenciales sin asignar como aquellas ya asignadas a servicios
     const query = `
       SELECT 
         c.id,
         c.product_code,
         c.email,
-        c.password,
         c.profile_name,
         c.pin,
         c.status,
         c.created_at,
-        s.expires_at,
-        (SELECT COUNT(*) FROM crm_clients WHERE credential_id = c.id) as clients_assigned
+        (SELECT COUNT(*) FROM crm_clients WHERE credential_id = c.id) as clients_assigned,
+        (SELECT expires_at FROM services WHERE credential_id = c.id LIMIT 1) as service_expires_at
       FROM credentials c
-      INNER JOIN services s ON c.id = s.credential_id
-      WHERE s.tenant_id = $1
-        AND c.created_at >= (CURRENT_TIMESTAMP - INTERVAL '15 minutes')
-        AND c.status != 'canceled'
+      WHERE c.tenant_id = $1
+        AND c.status IN ('available', 'assigned')
       ORDER BY c.created_at DESC;
     `;
 
@@ -351,6 +420,7 @@ export class CRMService {
       const result = await this.pool.query(query, [tenantId]);
       return result.rows;
     } catch (error) {
+      console.error('Error obtener credenciales disponibles:', error);
       throw new HttpException(
         'Error al obtener credenciales disponibles',
         HttpStatus.INTERNAL_SERVER_ERROR,
