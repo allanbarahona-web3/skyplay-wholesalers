@@ -228,27 +228,116 @@ export default function CRMPage() {
     return <LoadingState />;
   }
 
-  const hasPreferentialSubscription = subscription?.subscription?.status === 'active';
+  console.log('🔍 Subscription object:', subscription);
+
+  // Check for Preferential subscription (direct status check)
+  const hasPreferentialSubscription =
+    subscription?.status === 'active' &&
+    subscription?.product_type === 'preferential';
+
+  // Check for CRM BASIC (nested structure - for legacy/other endpoints)
   const hasCRMBasic = subscription?.crm_basic?.status === 'active';
+
+  // Check for CRM PRO (nested structure - for legacy/other endpoints)
   const hasCRMPro = subscription?.crm_pro?.status === 'active';
+
+  // User has access if any of these are true
   const hasAccess = hasPreferentialSubscription || hasCRMBasic || hasCRMPro;
   const isCRMPro = hasCRMPro;
+
+  console.log('✅ Access check:', {
+    hasPreferentialSubscription,
+    hasCRMBasic,
+    hasCRMPro,
+    hasAccess,
+  });
 
   if (!subscription || !hasAccess) {
     return <AccessDenied subscription={subscription} />;
   }
 
   return (
-    <div style={{ paddingTop: '80px', paddingBottom: '40px' }}>
-      <main
-        style={{
-          maxWidth: '1200px',
-          marginLeft: 'auto',
-          marginRight: 'auto',
-          paddingLeft: '20px',
-          paddingRight: '20px',
-        }}
-      >
+    <div id="crm-page">
+      {/* Header */}
+      <header className="apple-header">
+        <div className="apple-header-content">
+          <div className="apple-header-left">
+            <img src="/White on Transparent.png" alt="Logo" className="apple-logo" />
+            <div className="apple-divider"></div>
+            <span className="apple-header-title">CRM {isCRMPro ? 'PRO' : 'PLUS'}</span>
+          </div>
+          
+          <div className="apple-header-center">
+            <input
+              id="q"
+              className="apple-search"
+              placeholder="Buscar clientes..."
+              value={searchText}
+              onChange={(e) => setSearchText(e.target.value)}
+              maxLength={100}
+              autoComplete="off"
+            />
+          </div>
+
+          <div className="apple-header-right">
+            <button className="apple-btn-link" onClick={() => router.push("/panel")} title="Panel Mayorista">
+              <span>📊</span> Panel Mayorista
+            </button>
+            <button className="apple-btn-link" onClick={() => router.push("/")} title="Catálogo">
+              <span>🏪</span> Catálogo
+            </button>
+            <button className="apple-btn-link" onClick={() => router.push("/login")}>
+              <span>👤</span> Salir
+            </button>
+          </div>
+        </div>
+      </header>
+
+      <main className="container" style={{ paddingTop: '80px' }}>
+        {/* Upgrade Banner (solo para CRM PLUS) */}
+        {!isCRMPro && (
+          <div style={{
+            background: 'linear-gradient(135deg, #af52de 0%, #7c3aed 100%)',
+            color: 'white',
+            padding: '20px 24px',
+            borderRadius: '12px',
+            marginBottom: '30px',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center'
+          }}>
+            <div>
+              <h3 style={{ margin: '0 0 8px 0', fontSize: '16px', fontWeight: '600' }}>
+                ⭐ Actualiza a CRM PRO - Obtén 25% Descuento en Streaming
+              </h3>
+              <p style={{ margin: 0, fontSize: '14px', opacity: 0.95 }}>
+                Sube de 20% a 25% descuento en productos streaming/IPTV + recordatorios automáticos por email y SMS + analytics completos
+              </p>
+            </div>
+            <button 
+              onClick={() => setShowUpgradeModal(true)}
+              style={{
+                backgroundColor: 'white',
+                color: '#af52de',
+                border: 'none',
+                padding: '8px 16px',
+                borderRadius: '6px',
+                fontWeight: '600',
+                cursor: 'pointer',
+                fontSize: '14px',
+                whiteSpace: 'nowrap',
+                marginLeft: '20px'
+              }}
+              onMouseOver={(e) => (e.currentTarget.style.opacity = '0.9')}
+              onMouseOut={(e) => (e.currentTarget.style.opacity = '1')}
+            >
+              Upgrade →
+            </button>
+          </div>
+        )}
+
+        {/* Main Content Grid */}
+        <div className="panel-grid">
         {/* Clientes Section */}
         <section className="panel-section">
           <div className="section-header">
@@ -442,6 +531,7 @@ export default function CRMPage() {
             </div>
           </section>
         )}
+        </div>
       </main>
 
       {/* Modals */}
@@ -483,6 +573,159 @@ export default function CRMPage() {
         onAddSubmit={handleAddClient}
         onEditSubmit={handleEditClient}
       />
+
+      {/* Modal: Upgrade to PRO */}
+      {showUpgradeModal && (
+        <div className="modal modal-flex open">
+          <div className="card modal-card">
+            <button
+              className="btn secondary modal-close"
+              onClick={() => setShowUpgradeModal(false)}
+            >
+              ✕
+            </button>
+            <div style={{ textAlign: 'center', marginBottom: '20px' }}>
+              <div style={{ fontSize: '48px', marginBottom: '12px' }}>⭐</div>
+              <h2
+                style={{
+                  margin: '0 0 8px 0',
+                  fontSize: '20px',
+                  color: '#1d1d1f',
+                }}
+              >
+                Actualiza a CRM PRO
+              </h2>
+              <p style={{ margin: 0, fontSize: '14px', color: '#86868b' }}>
+                Desbloquea funcionalidades premium para tu negocio
+              </p>
+            </div>
+
+            <div
+              style={{
+                backgroundColor: '#f0fdf4',
+                borderRadius: '8px',
+                padding: '16px',
+                marginBottom: '16px',
+                border: '2px solid #10b981',
+              }}
+            >
+              <div style={{ marginBottom: '8px' }}>
+                <p
+                  style={{
+                    margin: '0 0 4px 0',
+                    color: '#065f46',
+                    fontSize: '16px',
+                    fontWeight: '700',
+                  }}
+                >
+                  💰 Sube tu descuento de 20% a 25%
+                </p>
+                <p
+                  style={{
+                    margin: 0,
+                    color: '#047857',
+                    fontSize: '13px',
+                  }}
+                >
+                  En todos los productos streaming e IPTV
+                </p>
+              </div>
+            </div>
+
+            <div
+              style={{
+                backgroundColor: '#f5f5f7',
+                borderRadius: '8px',
+                padding: '16px',
+                marginBottom: '20px',
+              }}
+            >
+              <div style={{ marginBottom: '12px' }}>
+                <p
+                  style={{
+                    margin: '0 0 6px 0',
+                    color: '#1d1d1f',
+                    fontSize: '14px',
+                    fontWeight: '500',
+                  }}
+                >
+                  ✅ Recordatorios Automáticos
+                </p>
+                <p
+                  style={{
+                    margin: 0,
+                    color: '#86868b',
+                    fontSize: '13px',
+                  }}
+                >
+                  Envía SMS y email automáticos a tus clientes antes de que
+                  venza su servicio
+                </p>
+              </div>
+              <div>
+                <p
+                  style={{
+                    margin: '0 0 6px 0',
+                    color: '#1d1d1f',
+                    fontSize: '14px',
+                    fontWeight: '500',
+                  }}
+                >
+                  ✅ Analytics Completos
+                </p>
+                <p
+                  style={{
+                    margin: 0,
+                    color: '#86868b',
+                    fontSize: '13px',
+                  }}
+                >
+                  Visualiza estadísticas completas de tus clientes y servicios
+                </p>
+              </div>
+            </div>
+
+            <div
+              style={{
+                backgroundColor: '#f0fdf4',
+                borderRadius: '8px',
+                padding: '12px',
+                marginBottom: '20px',
+                border: '1px solid #86efac',
+              }}
+            >
+              <p
+                style={{
+                  margin: 0,
+                  textAlign: 'center',
+                  fontSize: '20px',
+                  fontWeight: '600',
+                  color: '#10b981',
+                }}
+              >
+                $24.95 / mes
+              </p>
+            </div>
+
+            <div style={{ display: 'flex', gap: '12px' }}>
+              <button
+                className="btn btn-secondary"
+                onClick={() => setShowUpgradeModal(false)}
+                style={{ flex: 1 }}
+              >
+                Ahora no
+              </button>
+              <button
+                className="btn btn-primary"
+                onClick={handleUpgradeToPRO}
+                style={{ flex: 1 }}
+              >
+                Actualizar a PRO
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Toast */}
       {toastMsg && (

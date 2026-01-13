@@ -11,6 +11,15 @@ export type CRMClient = {
 };
 
 export type UserSubscription = {
+  status?: string;
+  product_type?: string;
+  stripe_subscription_id?: string;
+  current_period_end?: string;
+  billing_cycle?: string;
+  cancel_at_period_end?: boolean;
+  remaining_days?: number | null;
+  paused_at?: string | null;
+  // Legacy nested structure (for compatibility)
   subscription?: { status: string };
   crm_basic?: { status: string };
   crm_pro?: { status: string };

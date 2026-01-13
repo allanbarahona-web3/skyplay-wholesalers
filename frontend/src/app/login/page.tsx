@@ -1,6 +1,7 @@
 "use client";
 import React, { useState } from "react";
 import { useRouter } from "next/navigation";
+import RegisterModal from "@/components/RegisterModal";
 import { loginWithOtp, setupTotp, resetPasswordWithTotp } from "@/lib/api";
 
 export default function LoginPage() {
@@ -17,6 +18,7 @@ export default function LoginPage() {
   const [resetConfirmPass, setResetConfirmPass] = useState("");
   const [toastMsg, setToastMsg] = useState("");
   const [toastOk, setToastOk] = useState(false);
+  const [showRegisterModal, setShowRegisterModal] = useState(false);
 
   // Utilidad para mostrar toast
   const toast = (msg: string, ok = false) => {
@@ -153,7 +155,17 @@ export default function LoginPage() {
           </button>
 
           <div className="login-footer">
-            ¿Aún no eres mayorista? <a className="login-link" href="#" onClick={e => {e.preventDefault(); router.push("/panel")}}>Solicitar acceso</a>
+            ¿Aún no eres mayorista?{" "}
+            <button
+              className="login-link"
+              onClick={(e) => {
+                e.preventDefault();
+                setShowRegisterModal(true);
+              }}
+              style={{ background: "none", border: "none", cursor: "pointer", color: "#3b82f6", textDecoration: "underline" }}
+            >
+              Crear cuenta aquí
+            </button>
           </div>
         </div>
       </div>
@@ -192,6 +204,17 @@ export default function LoginPage() {
       {toastMsg && (
         <div className={`toast${toastOk ? " ok" : " err"}`}>{toastMsg}</div>
       )}
+
+      {/* Modal de Registro */}
+      <RegisterModal
+        isOpen={showRegisterModal}
+        onClose={() => setShowRegisterModal(false)}
+        onSuccess={() => {
+          setShowRegisterModal(false);
+          toast("✅ Cuenta creada. Inicia sesión ahora", true);
+        }}
+        context="login"
+      />
     </div>
   );
 }

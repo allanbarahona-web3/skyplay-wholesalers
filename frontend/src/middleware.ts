@@ -7,8 +7,18 @@ export function middleware(request: NextRequest) {
   // Solo ejecutar en rutas protegidas
   console.log(`[MIDDLEWARE] Checking: ${pathname}`);
 
+  // Rutas públicas (no requieren login)
+  const publicRoutes = [
+    '/login',
+    '/register',
+    '/', // ← Catálogo público
+    '/_next',
+    '/api',
+    '/favicon.ico',
+  ];
+
   // Excluir rutas públicas
-  if (pathname.startsWith('/login') || 
+  if (publicRoutes.includes(pathname) || 
       pathname.startsWith('/_next') || 
       pathname.startsWith('/api') ||
       pathname === '/favicon.ico' ||
@@ -17,7 +27,7 @@ export function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // Verificar cookie de sesión
+  // Verificar cookie de sesión para rutas protegidas
   const sessionCookie = request.cookies.get('sky_sid');
   console.log(`[MIDDLEWARE] Session cookie: ${sessionCookie ? 'EXISTS' : 'MISSING'}`);
 

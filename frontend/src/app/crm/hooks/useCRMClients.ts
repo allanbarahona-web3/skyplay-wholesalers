@@ -21,8 +21,9 @@ export const useCRMClients = (onSuccess: () => void): UseCRMClientsReturn => {
         setOperationError(null);
         setOperationLoading(true);
 
-        const res = await fetch('/api/crm/clients', {
+        const res = await fetch('http://localhost:3000/api/crm/clients', {
           method: 'POST',
+          credentials: 'include',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(formData),
         });
@@ -54,8 +55,9 @@ export const useCRMClients = (onSuccess: () => void): UseCRMClientsReturn => {
         setOperationError(null);
         setOperationLoading(true);
 
-        const res = await fetch(`/api/crm/clients/${clientId}`, {
+        const res = await fetch(`http://localhost:3000/api/crm/clients/${clientId}`, {
           method: 'PUT',
+          credentials: 'include',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(formData),
         });
@@ -87,8 +89,9 @@ export const useCRMClients = (onSuccess: () => void): UseCRMClientsReturn => {
         setOperationError(null);
         setOperationLoading(true);
 
-        const res = await fetch(`/api/crm/clients/${clientId}`, {
+        const res = await fetch(`http://localhost:3000/api/crm/clients/${clientId}`, {
           method: 'DELETE',
+          credentials: 'include',
         });
 
         if (!res.ok) {

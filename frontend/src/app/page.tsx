@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { usePayment } from "@/components/PaymentContext";
 import CredentialsModal from "@/components/CredentialsModal";
 import SuccessInfoModal from "@/components/SuccessInfoModal";
+import RegisterModal from "@/components/RegisterModal";
 import { getAllProducts, logout, getOverview } from "@/lib/api";
 import { groupProductsByService, createPriceMap, createProductCodeMap, createCategoryMap, getBrandColors, type CatalogService, type PriceMap, type ProductCodeMap, type CategoryMap } from "@/lib/catalog-utils";
 
@@ -20,12 +21,14 @@ export default function Home() {
   const [successProvider, setSuccessProvider] = useState<string>('');
   const [purchasedServices, setPurchasedServices] = useState<any[]>([]);
   const [subscription, setSubscription] = useState<any>(null); // Suscripción del usuario
+  const [showRegisterModal, setShowRegisterModal] = useState(false);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
   const router = useRouter();
   const { openPayment, walletBalance, refreshWallet } = usePayment();
 
   useEffect(() => {
+    checkAuth();
     loadCatalog();
-    refreshWallet();
     
     // Detectar retorno desde Stripe/PayPal/Wallet y refrescar saldo
     const urlParams = new URLSearchParams(window.location.search);
@@ -53,6 +56,22 @@ export default function Home() {
       }, waitTime);
     }
   }, []);
+
+  // Verificar si el usuario está autenticado
+  const checkAuth = async () => {
+    try {
+      const sessionCookie = document.cookie.split('; ').find(row => row.startsWith('sky_sid='));
+      if (sessionCookie) {
+        setIsAuthenticated(true);
+        await refreshWallet();
+      } else {
+        setIsAuthenticated(false);
+      }
+    } catch (error) {
+      console.error('Error checking auth:', error);
+      setIsAuthenticated(false);
+    }
+  };
 
   const loadCatalog = async () => {
     setLoading(true);
@@ -119,6 +138,12 @@ export default function Home() {
   };
 
   const handleBuy = (svc: string, plan: string) => {
+    // Si no está autenticado, mostrar modal de registro
+    if (!isAuthenticated) {
+      setShowRegisterModal(true);
+      return;
+    }
+
     const key = `${svc}|${plan}`;
     const basePrice = priceMap[key] || 0;
     const productCode = productCodeMap[key];
@@ -189,15 +214,36 @@ export default function Home() {
           </div>
 
           <div className="apple-header-right">
-            <div className="apple-wallet">
-              💰 ${walletBalance.toFixed(2)}
-            </div>
-            <button className="apple-btn-link" onClick={goToPanel}>
-              <span>📊</span> Panel Mayorista
-            </button>
-            <button className="apple-btn-link" onClick={handleLogout}>
-              <span>👤</span> Salir
-            </button>
+            {isAuthenticated ? (
+              <>
+                <div className="apple-wallet">
+                  💰 ${walletBalance.toFixed(2)}
+                </div>
+                <button className="apple-btn-link" onClick={goToPanel}>
+                  <span>📊</span> Panel Mayorista
+                </button>
+                <button className="apple-btn-link" onClick={handleLogout}>
+                  <span>👤</span> Salir
+                </button>
+              </>
+            ) : (
+              <>
+                <button 
+                  className="apple-btn-link" 
+                  onClick={() => router.push('/login')}
+                  style={{ background: '#3b82f6', color: 'white', borderRadius: '6px', padding: '8px 16px' }}
+                >
+                  <span>👤</span> Iniciar Sesión
+                </button>
+                <button 
+                  className="apple-btn-link" 
+                  onClick={() => setShowRegisterModal(true)}
+                  style={{ background: '#10b981', color: 'white', borderRadius: '6px', padding: '8px 16px' }}
+                >
+                  <span>✨</span> Registrarse
+                </button>
+              </>
+            )}
           </div>
         </div>
       </header>
@@ -205,6 +251,39 @@ export default function Home() {
       <div className="hero-section">
         <h1 className="hero-title">Planes de Streaming & IPTV</h1>
         <p className="hero-subtitle">Catálogo completo para distribución mayorista</p>
+        
+        {!isAuthenticated && (
+          <div style={{ 
+            background: '#dbeafe', 
+            border: '2px solid #3b82f6', 
+            borderRadius: '8px', 
+            padding: '16px', 
+            marginTop: '20px',
+            textAlign: 'center'
+          }}>
+            <p style={{ color: '#1e40af', fontWeight: '500', marginBottom: '10px' }}>
+              👁️ Estás viendo el catálogo sin precios
+            </p>
+            <p style={{ color: '#1e40af', marginBottom: '12px' }}>
+              Regístrate ahora para ver precios especiales y obtener hasta 25% de descuento
+            </p>
+            <button 
+              onClick={() => setShowRegisterModal(true)}
+              style={{
+                background: '#3b82f6',
+                color: 'white',
+                padding: '10px 24px',
+                borderRadius: '6px',
+                border: 'none',
+                fontWeight: 'bold',
+                cursor: 'pointer'
+              }}
+            >
+              Crear Cuenta Gratis
+            </button>
+          </div>
+        )}
+        
         <div className="hero-stats">
           <span className="stat-badge">{filtered.length} servicios</span>
           <span className="stat-badge">{filtered.reduce((acc, svc) => acc + svc.plans.length, 0)} planes</span>
@@ -303,37 +382,65 @@ export default function Home() {
                             </p>
                             {basePrice && (
                               <div style={{ marginTop: '8px' }}>
-                                {/* Precios */}
-                                {priceInfo.discounted ? (
-                                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
-                                    <div style={{ fontSize: '0.9rem', color: '#ef4444', textDecoration: 'line-through', fontWeight: '500' }}>
-                                      ${basePrice.toFixed(2)}
-                                    </div>
-                                    <div style={{ fontWeight: 'bold', color: '#22c55e', fontSize: '1.15rem' }}>
-                                      ${priceInfo.price.toFixed(2)}
-                                    </div>
-                                    <div style={{ fontSize: '0.75rem', background: '#22c55e', color: '#fff', padding: '2px 8px', borderRadius: '4px', fontWeight: 'bold' }}>
-                                      -20%
-                                    </div>
+                                {!isAuthenticated ? (
+                                  <div style={{ 
+                                    background: '#f3f4f6', 
+                                    padding: '12px', 
+                                    borderRadius: '6px', 
+                                    textAlign: 'center',
+                                    marginBottom: '8px'
+                                  }}>
+                                    <p style={{ fontSize: '0.85rem', color: '#6b7280', margin: '0 0 8px 0' }}>
+                                      Precio oculto
+                                    </p>
+                                    <button 
+                                      className="btn small" 
+                                      onClick={() => setShowRegisterModal(true)}
+                                      style={{ 
+                                        background: '#3b82f6', 
+                                        padding: '8px 16px', 
+                                        fontSize: '0.85rem',
+                                        width: '100%'
+                                      }}
+                                    >
+                                      Ver precio y comprar
+                                    </button>
                                   </div>
                                 ) : (
-                                  <div style={{ fontSize: '1.15rem', fontWeight: 'bold', marginBottom: '6px' }}>
-                                    ${basePrice.toFixed(2)}
-                                  </div>
+                                  <>
+                                    {/* Precios */}
+                                    {priceInfo.discounted ? (
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
+                                        <div style={{ fontSize: '0.9rem', color: '#ef4444', textDecoration: 'line-through', fontWeight: '500' }}>
+                                          ${basePrice.toFixed(2)}
+                                        </div>
+                                        <div style={{ fontWeight: 'bold', color: '#22c55e', fontSize: '1.15rem' }}>
+                                          ${priceInfo.price.toFixed(2)}
+                                        </div>
+                                        <div style={{ fontSize: '0.75rem', background: '#22c55e', color: '#fff', padding: '2px 8px', borderRadius: '4px', fontWeight: 'bold' }}>
+                                          -20%
+                                        </div>
+                                      </div>
+                                    ) : (
+                                      <div style={{ fontSize: '1.15rem', fontWeight: 'bold', marginBottom: '6px' }}>
+                                        ${basePrice.toFixed(2)}
+                                      </div>
+                                    )}
+                                    {/* Botón Comprar */}
+                                    <button 
+                                      className="btn small" 
+                                      onClick={() => handleBuy(item.svc, plan)} 
+                                      style={{ 
+                                        background: 'var(--primary)', 
+                                        padding: '8px 16px', 
+                                        fontSize: '0.85rem',
+                                        width: '100%'
+                                      }}
+                                    >
+                                      Comprar
+                                    </button>
+                                  </>
                                 )}
-                                {/* Botón Comprar */}
-                                <button 
-                                  className="btn small" 
-                                  onClick={() => handleBuy(item.svc, plan)} 
-                                  style={{ 
-                                    background: 'var(--primary)', 
-                                    padding: '8px 16px', 
-                                    fontSize: '0.85rem',
-                                    width: '100%'
-                                  }}
-                                >
-                                  Comprar
-                                </button>
                               </div>
                             )}
                           </div>
@@ -366,6 +473,20 @@ export default function Home() {
         isOpen={showSuccessInfoModal}
         onClose={() => setShowSuccessInfoModal(false)}
         provider={successProvider}
+      />
+
+      {/* Modal de registro */}
+      <RegisterModal
+        isOpen={showRegisterModal}
+        onClose={() => setShowRegisterModal(false)}
+        onSuccess={() => {
+          setIsAuthenticated(true);
+          checkAuth();
+          setShowRegisterModal(false);
+          // Recargar catálogo con precios
+          loadCatalog();
+        }}
+        context="catalog"
       />
     </div>
   );

@@ -24,24 +24,43 @@ export const useCRMData = (): UseCRMDataReturn => {
       setLoading(true);
       setError(null);
 
+      console.log('🔄 Fetching CRM data...');
+
       // Fetch overview data
-      const overviewRes = await fetch('/api/me/overview');
-      if (!overviewRes.ok) throw new Error('Failed to fetch overview');
+      const overviewRes = await fetch('http://localhost:3000/api/me/overview', {
+        credentials: 'include',
+      });
+      
+      if (!overviewRes.ok) {
+        console.error('❌ Overview fetch failed:', overviewRes.status);
+        throw new Error(`Failed to fetch overview: ${overviewRes.status}`);
+      }
+      
       const overviewData = await overviewRes.json();
+      console.log('📊 Overview data:', overviewData);
 
       setSubscription(overviewData.subscription);
       setPurchasedServices(overviewData.subscription?.active_services || []);
 
       // Fetch CRM clients
-      const clientsRes = await fetch('/api/crm/clients');
-      if (!clientsRes.ok) throw new Error('Failed to fetch CRM clients');
+      const clientsRes = await fetch('http://localhost:3000/api/crm/clients', {
+        credentials: 'include',
+      });
+      
+      if (!clientsRes.ok) {
+        console.error('❌ Clients fetch failed:', clientsRes.status);
+        throw new Error(`Failed to fetch CRM clients: ${clientsRes.status}`);
+      }
+      
       const clientsData = await clientsRes.json();
+      console.log('👥 Clients data:', clientsData);
 
-      setClients(clientsData.clients || []);
+      setClients(clientsData.clients || clientsData || []);
+      console.log('✅ CRM data loaded successfully');
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'An error occurred';
       setError(errorMessage);
-      console.error('Error fetching CRM data:', err);
+      console.error('❌ Error fetching CRM data:', err);
     } finally {
       setLoading(false);
     }

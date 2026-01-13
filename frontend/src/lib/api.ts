@@ -73,6 +73,64 @@ export interface ResetPasswordData {
 }
 
 /**
+ * Registrar nuevo mayorista
+ */
+export async function registerMayorista(data: {
+  email: string;
+  password: string;
+  companyName: string;
+  name: string;
+}): Promise<ApiResponse<{
+  id: string;
+  email: string;
+  name: string;
+  tenantId: number;
+  role: string;
+  status: string;
+}>> {
+  return apiFetch('/v1/auth/register-mayorista', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+/**
+ * Registrar como Lead (solicitud para mayorista)
+ */
+export async function registerLead(data: {
+  email: string;
+  fullname: string;
+  telephone: string;
+  message?: string;
+  recaptchaToken?: string;
+}): Promise<ApiResponse<{
+  id: string;
+  email: string;
+  fullname: string;
+  telephone: string;
+  status: string;
+  message: string;
+}>> {
+  return apiFetch('/v1/auth/register-lead', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+/**
+ * Login con email y password
+ */
+export async function login(data: {
+  email: string;
+  password: string;
+}): Promise<ApiResponse<LoginResponse>> {
+  return apiFetch('/v1/auth/login', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+/**
  * Login con email, password y código OTP
  */
 export async function loginWithOtp(data: LoginData): Promise<ApiResponse<LoginResponse>> {
