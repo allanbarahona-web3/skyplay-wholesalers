@@ -1,6 +1,11 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
+/**
+ * @deprecated Esta file convention está deprecada.
+ * Usar 'rewrites' con 'beforeFiles' en next.config.ts en su lugar.
+ * Este código se mantiene para compatibilidad hacia atrás.
+ */
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
